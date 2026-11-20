@@ -2,10 +2,14 @@ from fastapi import FastAPI
 import logging
 from contextlib import asynccontextmanager
 from sqlalchemy import select
+from starlette.middleware.cors import CORSMiddleware
+
 from src.database import engine, Base, AsyncSessionLocal
 from src.models import User
 from src.config import settings
 from src.security import encrypt_password
+
+from src.auth.router import router as auth_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,6 +46,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Password Manager API", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.frontend_url],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.get("/")
 async def read_root():
     return {"message": "API is running."}
+
+app.include_router(auth_router)

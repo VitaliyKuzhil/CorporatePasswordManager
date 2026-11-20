@@ -14,8 +14,9 @@ def encrypt_password(password: str) -> str:
 def decrypt_password(protected_password: str) -> str:
     return cipher_suite.decrypt(protected_password.encode()).decode()
 
-def create_access_token(data: dict) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    delta = expires_delta if expires_delta else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + delta
     to_encode.update({"exp": int(expire.timestamp())})
     return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
