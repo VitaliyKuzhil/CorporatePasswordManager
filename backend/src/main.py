@@ -7,6 +7,8 @@ from src.models import User
 from src.config import settings
 from src.security import encrypt_password
 
+from src.auth.router import router as auth_router
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -45,3 +47,5 @@ app = FastAPI(title="Password Manager API", lifespan=lifespan)
 @app.get("/")
 async def read_root():
     return {"message": "API is running."}
+
+app.include_router(auth_router)
