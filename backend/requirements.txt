@@ -1,0 +1,12 @@
+fastapi[standard]
+uvicorn
+
+sqlalchemy
+greenlet
+asyncmy
+
+cryptography
+pyjwt[crypto]
+
+python-multipart
+pydantic-settings
