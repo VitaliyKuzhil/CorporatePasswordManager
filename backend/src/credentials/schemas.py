@@ -30,6 +30,7 @@ class ServiceResponse(ServiceBase):
 class CredentialWithAccess(BaseModel):
     credential_id: int
     login: Optional[str] = None
+    protected_password: Optional[str] = None
     comment: Optional[str] = None
     access_count: int = 0
 

@@ -161,8 +161,9 @@
                 <td class="cred-login">{{ cred.login || '—' }}</td>
                 <td class="cred-password">
                   <div class="password-cell">
-                    <span class="password-dots">••••••••••</span>
-                    <button class="btn-icon-sm" @click="togglePassword(cred.credential_id)" title="Показати пароль">
+                    <span v-if="visiblePasswords.has(cred.credential_id)" class="password-value">{{ cred.protected_password }}</span>
+                    <span v-else class="password-dots">••••••••••</span>
+                    <button class="btn-icon-sm" @click="togglePassword(cred.credential_id)" :title="visiblePasswords.has(cred.credential_id) ? 'Сховати' : 'Показати'">
                       <svg v-if="visiblePasswords.has(cred.credential_id)" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C7 20 3 16 3 11C3 8.44 4.06 6.11 5.82 4.5M18.62 4.5C16.86 6.11 15.8 8.44 15.8 11C15.8 16 19.8 20 24.8 20C22.8 20 20.8 19.2 19.18 17.94M1 1L23 23M7.88 7.88C7.3 8.46 6.8 9.18 6.4 10M12 12C12 12.5523 11.5523 13 11 13C10.4477 13 10 12.5523 10 12C10 11.4477 10.4477 11 11 11C11.5523 11 12 11.4477 12 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
@@ -191,13 +192,6 @@
           </table>
         </div>
 
-        <!-- Add Button -->
-        <button v-if="isAdmin" class="btn btn-add-floating" @click="openGrantAccess">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          Надати доступ
-        </button>
       </div>
     </template>
 
@@ -350,6 +344,59 @@
       </div>
     </div>
 
+    <!-- Edit Service Dialog -->
+    <div v-if="showEditDialog" class="dialog-overlay" @click.self="closeEditDialog">
+      <div class="edit-service-dialog">
+        <div class="edit-dialog-header">
+          <h3 class="edit-dialog-title">Редагувати джерело</h3>
+          <button class="btn-close" @click="closeEditDialog">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="edit-dialog-body">
+          <div class="form-group">
+            <label class="form-label">Назва джерела *</label>
+            <input
+              v-model="editForm.service_name"
+              type="text"
+              class="form-input"
+              placeholder="Назва джерела"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">URL</label>
+            <input
+              v-model="editForm.service_url"
+              type="text"
+              class="form-input"
+              placeholder="https://example.com/"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">URL логотипу</label>
+            <input
+              v-model="editForm.service_logo_url"
+              type="text"
+              class="form-input"
+              placeholder="https://example.com/logo.png"
+            />
+          </div>
+        </div>
+
+        <div class="edit-dialog-footer">
+          <button class="btn btn-secondary" @click="closeEditDialog">Скасувати</button>
+          <button class="btn btn-primary" :disabled="servicesStore.loading" @click="submitEditService">
+            {{ servicesStore.loading ? 'Збереження...' : 'Зберегти' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Access Dialog -->
     <div v-if="showAccessDialog" class="dialog-overlay" @click.self="closeAccessDialog">
       <div class="access-dialog">
@@ -469,6 +516,41 @@ const currentCredentialId = ref<number | null>(null)
 const currentCredentialName = ref('')
 const userSearchQuery = ref('')
 
+// Edit service dialog state
+const showEditDialog = ref(false)
+const editForm = ref({
+  service_name: '',
+  service_url: '',
+  service_logo_url: ''
+})
+
+function openEditDialog() {
+  if (!detailStore.detail) return
+  showEditDialog.value = true
+  editForm.value = {
+    service_name: detailStore.detail.service_name || '',
+    service_url: detailStore.detail.service_url || '',
+    service_logo_url: detailStore.detail.service_logo_url || ''
+  }
+}
+
+function closeEditDialog() {
+  showEditDialog.value = false
+}
+
+async function submitEditService() {
+  if (!detailStore.detail || !editForm.value.service_name) return
+  const result = await servicesStore.updateService(detailStore.detail.service_id, {
+    service_name: editForm.value.service_name,
+    service_url: editForm.value.service_url || undefined,
+    service_logo_url: editForm.value.service_logo_url || undefined
+  })
+  if (result) {
+    await detailStore.fetchServiceDetail(serviceId.value)
+    closeEditDialog()
+  }
+}
+
 // Add credential dialog state
 const showAddDialog = ref(false)
 const addForm = ref({
@@ -568,13 +650,16 @@ function openGrantAccess() {
 }
 
 function editService() {
-  // TODO: реалізувати редагування сервісу
-  console.log('Редагувати сервіс:', serviceId.value)
+  openEditDialog()
 }
 
-function deleteService() {
-  // TODO: реалізувати видалення сервісу
-  console.log('Видалити сервіс:', serviceId.value)
+async function deleteService() {
+  if (!detailStore.detail) return
+  if (!confirm('Видалити це джерело?')) return
+  const result = await servicesStore.deleteService(detailStore.detail.service_id)
+  if (result) {
+    router.push('/')
+  }
 }
 
 
@@ -694,7 +779,7 @@ async function addUserAccess(userId: number) {
     userSearchQuery.value = ''
     accessStore.searchResults = []
     // Оновлюємо детальну інформацію про сервіс
-    detailStore.fetchServiceDetail(serviceId.value)
+    await detailStore.fetchServiceDetail(serviceId.value)
   }
 }
 
@@ -703,7 +788,7 @@ async function removeAccess(userId: number) {
   const success = await accessStore.revokeAccess(serviceId.value, currentCredentialId.value, userId)
   if (success) {
     // Оновлюємо детальну інформацію про сервіс
-    detailStore.fetchServiceDetail(serviceId.value)
+    await detailStore.fetchServiceDetail(serviceId.value)
   }
 }
 
@@ -1055,6 +1140,13 @@ onMounted(async () => {
   font-size: 0.875rem;
   color: #0f172a;
   letter-spacing: 0.1em;
+}
+
+.password-value {
+  font-family: monospace;
+  font-size: 0.875rem;
+  color: #0f172a;
+  word-break: break-all;
 }
 
 .btn-icon-sm {
@@ -1816,6 +1908,84 @@ onMounted(async () => {
 
 .btn-cancel:hover {
   background: #e2e8f0;
+}
+
+/* Edit Service Dialog */
+.edit-service-dialog {
+  background: white;
+  border-radius: 1rem;
+  width: 440px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.edit-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.edit-dialog-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.edit-dialog-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.edit-dialog-footer {
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.edit-dialog-footer .btn-secondary {
+  background: #f1f5f9;
+  color: #64748b;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.edit-dialog-footer .btn-secondary:hover {
+  background: #e2e8f0;
+}
+
+.edit-dialog-footer .btn-primary {
+  background: #0f172a;
+  color: white;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.edit-dialog-footer .btn-primary:hover:not(:disabled) {
+  background: #1e293b;
+}
+
+.edit-dialog-footer .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Responsive */

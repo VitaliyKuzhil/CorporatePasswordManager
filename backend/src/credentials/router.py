@@ -128,6 +128,7 @@ async def get_service_detail(
         cred_list.append(CredentialWithAccess(
             credential_id=cred.credential_id,
             login=cred.login,
+            protected_password=cred.protected_password,
             comment=cred.comment,
             access_count=access_count,
         ))
@@ -217,23 +218,29 @@ async def grant_credential_access(
     if not user:
         raise HTTPException(status_code=404, detail="Користувач не знайдено")
 
-    # Перевіряємо, чи вже є доступ
+    # Перевіряємо, чи вже є активний доступ
     existing = await db.execute(
         select(UserCredentialAccess).where(
             UserCredentialAccess.user_id == request.user_id,
-            UserCredentialAccess.credential_id == credential_id,
-            UserCredentialAccess.is_active == True
+            UserCredentialAccess.credential_id == credential_id
         )
     )
-    if existing.scalars().first():
-        raise HTTPException(status_code=400, detail="Доступ вже надано")
+    access = existing.scalars().one_or_none()
 
-    access = UserCredentialAccess(
-        user_id=request.user_id,
-        credential_id=credential_id,
-        is_active=True,
-    )
-    db.add(access)
+    if access:
+        # Якщо запис існує, реактивуємо його (можливо, раніше був деактивовано)
+        if access.is_active:
+            raise HTTPException(status_code=400, detail="Доступ вже надано")
+        access.is_active = True
+    else:
+        # Якщо запису немає, створюємо новий
+        access = UserCredentialAccess(
+            user_id=request.user_id,
+            credential_id=credential_id,
+            is_active=True,
+        )
+        db.add(access)
+
     await db.commit()
     return {"message": "Доступ надано"}
 
@@ -262,15 +269,14 @@ async def revoke_credential_access(
     result = await db.execute(
         select(UserCredentialAccess).where(
             UserCredentialAccess.user_id == user_id,
-            UserCredentialAccess.credential_id == credential_id,
-            UserCredentialAccess.is_active == True
+            UserCredentialAccess.credential_id == credential_id
         )
     )
     access = result.scalars().one_or_none()
     if not access:
         raise HTTPException(status_code=404, detail="Доступ не знайдено")
 
-    access.is_active = False
+    await db.delete(access)
     await db.commit()
 
 

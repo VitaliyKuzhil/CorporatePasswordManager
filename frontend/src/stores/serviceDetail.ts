@@ -5,6 +5,7 @@ import { useAuthStore } from './auth'
 interface CredentialItem {
   credential_id: number
   login: string | null
+  protected_password: string | null
   comment: string | null
   access_count: number
 }
