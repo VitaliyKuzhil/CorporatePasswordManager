@@ -5,6 +5,7 @@ import ProfileView from '../views/ProfileView.vue'
 import LoginView from '../views/LoginView.vue'
 import UsersView from '../views/UsersView.vue'
 import ServiceDetailView from '../views/ServiceDetailView.vue'
+import EmployeeDetailView from '../views/EmployeeDetailView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -37,6 +38,12 @@ const router = createRouter({
       path: '/service/:id',
       name: 'serviceDetail',
       component: ServiceDetailView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/employee/:id',
+      name: 'employeeDetail',
+      component: EmployeeDetailView,
       meta: { requiresAuth: true }
     },
     {
