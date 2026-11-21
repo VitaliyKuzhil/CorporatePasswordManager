@@ -10,6 +10,7 @@ from src.config import settings
 from src.security import encrypt_password
 
 from src.auth.router import router as auth_router
+from src.credentials.router import router as credentials_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -58,4 +59,5 @@ app.add_middleware(
 async def read_root():
     return {"message": "API is running."}
 
-app.include_router(auth_router)
+app.include_router(auth_router, prefix="/api")
+app.include_router(credentials_router, prefix="/api")

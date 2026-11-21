@@ -4,7 +4,6 @@ services:
   db:
     image: mysql:8.4
     container_name: pm_mysql
-    restart: always
     env_file:
       - .env
     ports:
@@ -13,13 +12,12 @@ services:
       - db_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
-      timeout: 10s
-      retries: 5
+      timeout: 5s
+      retries: 3
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     container_name: pm_phpmyadmin
-    restart: always
     ports:
       - "${PHPMYADMIN_PORT:-8081}:80"
     environment:

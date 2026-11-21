@@ -15,9 +15,8 @@ export default defineConfig({
     port: Number(process.env.FRONTEND_PORT) || 5173,
     proxy: {
       '/api': {
-        target: `http://backend:${process.env.BACKEND_PORT || 8001}`,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        target: `http://backend:8000`,
+        changeOrigin: true
       }
     }
   },
