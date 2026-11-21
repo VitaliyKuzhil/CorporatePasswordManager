@@ -21,7 +21,10 @@ async def list_users_for_admin(
 ):
     """Отримати список усіх користувачів для адміністратора з пошуком та фільтром (без адмінів)."""
     query = select(User, func.count(UserCredentialAccess.user_id).label("access_count")) \
-        .outerjoin(UserCredentialAccess, User.user_id == UserCredentialAccess.user_id) \
+        .outerjoin(UserCredentialAccess,
+            (User.user_id == UserCredentialAccess.user_id) &
+            (UserCredentialAccess.is_active == True)
+        ) \
         .where(User.role != "admin") \
         .group_by(User.user_id)
 

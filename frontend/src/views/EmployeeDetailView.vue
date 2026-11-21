@@ -531,7 +531,10 @@ async function handleGrantAllToUser(targetUserId: number) {
 
 // Revoke credential
 async function revokeCredential(credential_id: number) {
-  await store.revokeCredential(userId.value, credential_id)
+  const success = await store.revokeCredential(userId.value, credential_id)
+  if (success) {
+    await store.fetchEmployee(userId.value)
+  }
 }
 
 // Edit dialog
