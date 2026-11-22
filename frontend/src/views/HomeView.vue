@@ -368,11 +368,6 @@ function closeDialog() {
   editingService.value = null
 }
 
-function openAddPasswordDialog(service: { service_name: string }) {
-  // TODO: реалізувати додавання пароля
-  console.log('Додати пароль для:', service.service_name)
-}
-
 function confirmDelete(service: { service_id: number; service_name: string }) {
   deleteTarget.value = service
   showDeleteDialog.value = true
@@ -590,16 +585,6 @@ onMounted(async () => {
 
 .btn-add:hover {
   background: #065f46;
-}
-
-.btn-generate {
-  background: #f0fdf4;
-  color: #16a34a;
-  border: 1px solid #bbf7d0;
-}
-
-.btn-generate:hover {
-  background: #dcfce7;
 }
 
 .btn-icon {
