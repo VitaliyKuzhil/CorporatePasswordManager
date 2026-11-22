@@ -42,11 +42,6 @@ const router = useRouter()
 const authStore = useAuthStore()
 const showProfileMenu = ref(false)
 
-onMounted(async () => {
-  if (authStore.isAuthenticated && !authStore.user) {
-    await authStore.fetchProfile()
-  }
-})
 
 const toggleProfileMenu = () => {
   showProfileMenu.value = !showProfileMenu.value

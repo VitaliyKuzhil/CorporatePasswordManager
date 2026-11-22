@@ -21,7 +21,37 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('token'))
   const user = ref<UserProfile | null>(null)
   const error = ref<string | null>(null)
-  const isAuthenticated = ref<boolean>(!!token.value)
+  const isAuthenticated = ref<boolean>(false)
+  const tokenValidated = ref<boolean>(false)
+
+  async function validateToken() {
+    if (tokenValidated.value) return
+    tokenValidated.value = true
+    if (!token.value) {
+      isAuthenticated.value = false
+      return
+    }
+    try {
+      const response = await fetch('/api/auth/profile', {
+        headers: {
+          'Authorization': `Bearer ${token.value}`
+        }
+      })
+      if (response.ok) {
+        user.value = await response.json()
+        isAuthenticated.value = true
+      } else {
+        // Токен невалідний, видаляємо його
+        token.value = null
+        user.value = null
+        isAuthenticated.value = false
+        localStorage.removeItem('token')
+      }
+    } catch {
+      // Помилка підключення, залишаємо токен для повторної спроби
+      isAuthenticated.value = false
+    }
+  }
 
   async function login(username: string, password: string) {
     error.value = null
@@ -101,8 +131,9 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     user.value = null
     isAuthenticated.value = false
+    tokenValidated.value = false
     localStorage.removeItem('token')
   }
 
-  return { token, user, isAuthenticated, error, login, logout, fetchProfile, updateProfile }
+  return { token, user, isAuthenticated, error, login, logout, fetchProfile, updateProfile, validateToken }
 })
