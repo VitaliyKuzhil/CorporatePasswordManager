@@ -56,7 +56,7 @@
 
       <div
         v-else
-        v-for="(service, sIndex) in filteredServices"
+        v-for="(service, sIndex) in paginatedServices"
         :key="service.service_id"
         class="service-card"
       >
@@ -133,6 +133,51 @@
       </div>
     </div>
 
+    <!-- Pagination -->
+    <div v-if="filteredServices.length > 0" class="pagination">
+      <button
+        class="btn-pagination"
+        :disabled="currentPage === 1"
+        @click="currentPage = 1"
+        title="Перша сторінка"
+      >
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M11 17L6 12L11 7M18 17L13 12L18 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button
+        class="btn-pagination"
+        :disabled="currentPage === 1"
+        @click="currentPage--"
+        title="Попередня сторінка"
+      >
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <span class="pagination-info">{{ paginationStart }}-{{ paginationEnd }} з {{ filteredServices.length }}</span>
+      <button
+        class="btn-pagination"
+        :disabled="currentPage === totalPages"
+        @click="currentPage++"
+        title="Наступна сторінка"
+      >
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button
+        class="btn-pagination"
+        :disabled="currentPage === totalPages"
+        @click="currentPage = totalPages"
+        title="Остання сторінка"
+      >
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M13 17L18 12L13 7M6 17L11 12L6 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
     <!-- Toast notification -->
     <div v-if="toastMessage" class="toast">
       {{ toastMessage }}
@@ -141,7 +186,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMyAccessStore } from '@/stores/myAccess'
 
@@ -159,6 +204,30 @@ const filteredServices = computed(() => {
     result = result.filter(s => s.service_id === filterService.value)
   }
   return result
+})
+
+const currentPage = ref(1)
+const pageSize = 10
+
+const totalPages = computed(() => Math.ceil(filteredServices.value.length / pageSize))
+
+const paginatedServices = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filteredServices.value.slice(start, start + pageSize)
+})
+
+const paginationStart = computed(() => {
+  if (filteredServices.value.length === 0) return 0
+  return (currentPage.value - 1) * pageSize + 1
+})
+
+const paginationEnd = computed(() => {
+  const end = currentPage.value * pageSize
+  return end > filteredServices.value.length ? filteredServices.value.length : end
+})
+
+watch(filteredServices, () => {
+  currentPage.value = 1
 })
 
 const serviceColors = [
@@ -590,6 +659,52 @@ onMounted(() => {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem 0 1rem;
+}
+
+.btn-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-pagination:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.btn-pagination:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-pagination svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pagination-info {
+  font-size: 0.875rem;
+  color: #64748b;
+  padding: 0 0.75rem;
+  font-weight: 500;
 }
 
 /* Responsive */
