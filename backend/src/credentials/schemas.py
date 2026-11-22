@@ -65,3 +65,26 @@ class CredentialResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class MyAccessCredential(BaseModel):
+    """Креденшал у списку доступів користувача."""
+    credential_id: int
+    login: Optional[str] = None
+    protected_password: Optional[str] = None
+    comment: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class MyAccessService(BaseModel):
+    """Сервіс у списку доступів користувача."""
+    service_id: int
+    service_name: str
+    service_url: Optional[str] = None
+    service_logo_url: Optional[str] = None
+    credentials: list[MyAccessCredential] = []
+
+    class Config:
+        from_attributes = True

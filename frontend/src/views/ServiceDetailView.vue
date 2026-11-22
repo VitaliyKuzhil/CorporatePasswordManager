@@ -807,9 +807,6 @@ function handleUserAvatarError(e: Event) {
 }
 
 onMounted(async () => {
-  if (authStore.isAuthenticated && !authStore.user) {
-    await authStore.fetchProfile()
-  }
   detailStore.fetchServiceDetail(serviceId.value)
 })
 </script>

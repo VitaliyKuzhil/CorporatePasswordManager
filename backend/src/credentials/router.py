@@ -6,10 +6,63 @@ from sqlalchemy.orm import joinedload
 from src.auth.dependencies import get_current_user, get_current_admin
 from src.database import get_db
 from src.models import Service, Credential, User, UserCredentialAccess
-from src.credentials.schemas import ServiceCreate, ServiceUpdate, ServiceResponse, ServiceDetailResponse, CredentialWithAccess, CredentialCreate, CredentialResponse
+from src.credentials.schemas import ServiceCreate, ServiceUpdate, ServiceResponse, ServiceDetailResponse, CredentialWithAccess, CredentialCreate, CredentialResponse, MyAccessService, MyAccessCredential
 from src.users.schemas import UserResponse, GrantAccessRequest
 
 router = APIRouter(prefix="/services", tags=["Services"])
+
+
+@router.get("/my-access", response_model=list[MyAccessService])
+async def get_my_access(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Отримати список усіх сервісів та паролів, доступних поточному користувачу."""
+    # Отримуємо всі активні доступи користувача
+    result = await db.execute(
+        select(Service, Credential)
+        .join(UserCredentialAccess, Credential.credential_id == UserCredentialAccess.credential_id)
+        .join(Service, Credential.service_id == Service.service_id)
+        .where(
+            UserCredentialAccess.user_id == current_user.user_id,
+            UserCredentialAccess.is_active == True
+        )
+        .order_by(Service.service_name, Credential.credential_id)
+    )
+    rows = result.all()
+
+    # Групуємо по сервісах
+    services_map: dict[int, dict] = {}
+    for service, cred in rows:
+        sid = service.service_id
+        if sid not in services_map:
+            services_map[sid] = {
+                "service": service,
+                "credentials": []
+            }
+        services_map[sid]["credentials"].append(cred)
+
+    response = []
+    for sid in sorted(services_map.keys()):
+        entry = services_map[sid]
+        service = entry["service"]
+        creds = entry["credentials"]
+        response.append(MyAccessService(
+            service_id=sid,
+            service_name=service.service_name or '',
+            service_url=service.service_url,
+            service_logo_url=service.service_logo_url,
+            credentials=[
+                MyAccessCredential(
+                    credential_id=c.credential_id,
+                    login=c.login,
+                    protected_password=c.protected_password,
+                    comment=c.comment,
+                )
+                for c in creds
+            ],
+        ))
+    return response
 
 
 @router.get("/", response_model=list[ServiceResponse])
