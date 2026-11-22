@@ -1,0 +1,68 @@
+from pydantic import BaseModel
+
+class UserResponse(BaseModel):
+    user_id: int
+    full_name: str | None = None
+    login: str | None = None
+    phone: str | None = None
+    avatar_url: str | None = None
+    role: str | None = None
+    status: str | None = None
+    access_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class UserCreate(BaseModel):
+    full_name: str
+    login: str
+    password: str
+    phone: str | None = None
+    avatar_url: str | None = None
+    role: str = "user"
+    status: str = "active"
+
+
+class UserUpdateStatus(BaseModel):
+    status: str
+
+
+class UpdateEmployee(BaseModel):
+    """Оновлення даних працівника адміністратором."""
+    full_name: str | None = None
+    phone: str | None = None
+    login: str | None = None
+    password: str | None = None
+
+
+class GrantAccessRequest(BaseModel):
+    user_id: int
+
+
+class EmployeeCredentialsResponse(BaseModel):
+    """Креденшал працівника з інформацією про сервіс."""
+    credential_id: int
+    service_id: int
+    service_name: str
+    service_url: str | None = None
+    service_logo_url: str | None = None
+    login: str
+    protected_password: str
+    comment: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class GrantEmployeeCredentialRequest(BaseModel):
+    """Запит на надання доступу до сервісу працівнику."""
+    service_id: int
+    login: str
+    password: str
+    comment: str | None = None
+
+
+class GrantAllCredentialsRequest(BaseModel):
+    """Запит на надання всіх паролів одного користувача іншому."""
+    source_user_id: int

@@ -3,7 +3,6 @@ import { RouterView } from 'vue-router'
 import { useRoute } from 'vue-router'
 import { computed } from 'vue'
 import Sidebar from '@/components/Sidebar.vue'
-import SessionTimer from '@/components/SessionTimer.vue'
 
 const route = useRoute()
 
@@ -15,9 +14,6 @@ const isLogin = computed(() => route.name === 'login')
     <div v-if="!isLogin" class="app-layout">
       <Sidebar />
       <div class="main-area">
-        <header class="top-header">
-          <SessionTimer />
-        </header>
         <main class="content">
           <RouterView />
         </main>
@@ -43,17 +39,9 @@ const isLogin = computed(() => route.name === 'login')
   background-color: #f1f5f9;
 }
 
-.top-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 1rem 2rem;
-  background-color: #f1f5f9;
-}
-
 .content {
   flex: 1;
-  padding: 0 2rem 2rem;
+  padding: 2rem 2rem 2rem;
   overflow-y: auto;
 }
 

@@ -7,7 +7,7 @@ from src.auth.dependencies import get_current_user
 from src.auth.schemas import Token, UserProfile, UpdateProfile
 from src.database import get_db
 from src.models import User
-from src.security import create_access_token, decrypt_password
+from src.security import create_access_token, decrypt_password, encrypt_password
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -25,6 +25,12 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Невірний логін або пароль",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if user.status == "blocked":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Обліковий запис заблоковано. Зверніться до адміністратора.",
         )
 
     access_token = create_access_token(data={"sub": user.login, "role": user.role})
@@ -56,6 +62,23 @@ async def update_profile(
         current_user.phone = profile_data.phone
     if profile_data.avatar_url is not None:
         current_user.avatar_url = profile_data.avatar_url
+
+    # Зміна логіну — тільки для адміністратора
+    if profile_data.login is not None and profile_data.login.strip():
+        login = profile_data.login.strip()
+        if login != current_user.login:
+            result = await db.execute(select(User).where(User.login == login))
+            existing = result.scalar_one_or_none()
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Такий логін вже існує",
+                )
+            current_user.login = login
+
+    # Зміна пароля — тільки для адміністратора
+    if profile_data.password is not None and profile_data.password.strip():
+        current_user.protected_password = encrypt_password(profile_data.password.strip())
 
     await db.commit()
     await db.refresh(current_user)

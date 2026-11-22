@@ -44,18 +44,6 @@
               <span>Ви бачите тільки ті паролі, до яких вам надано дозвіл.</span>
             </div>
           </li>
-          <li class="feature-item">
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
-            </div>
-            <div class="feature-text">
-              <strong>Сесія діє 12 годин</strong>
-              <span>Після цього система попросить увійти знову.</span>
-            </div>
-          </li>
         </ul>
 
         <p class="footer-note">Внутрішня система компанії. Доступ лише для співробітників.</p>
