@@ -333,6 +333,40 @@ async def revoke_credential_access(
     await db.commit()
 
 
+@router.delete("/{service_id}/credentials/{credential_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_credential(
+    service_id: int,
+    credential_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_admin: User = Depends(get_current_admin),
+):
+    """Видалити пароль з сервісу (тільки адміністратор)."""
+    # Перевіряємо, що креденшал належить цьому сервісу
+    cred_result = await db.execute(
+        select(Credential).where(
+            Credential.credential_id == credential_id,
+            Credential.service_id == service_id
+        )
+    )
+    credential = cred_result.scalars().one_or_none()
+    if not credential:
+        raise HTTPException(status_code=404, detail="Креденшал не знайдено")
+
+    # Видаляємо всі записи доступу до цього креденшала
+    access_result = await db.execute(
+        select(UserCredentialAccess).where(
+            UserCredentialAccess.credential_id == credential_id
+        )
+    )
+    accesses = access_result.scalars().all()
+    for access in accesses:
+        await db.delete(access)
+
+    # Видаляємо сам креденшал
+    await db.delete(credential)
+    await db.commit
+
+
 @router.post("/{service_id}/credentials", response_model=CredentialResponse, status_code=status.HTTP_201_CREATED)
 async def create_credential(
     service_id: int,

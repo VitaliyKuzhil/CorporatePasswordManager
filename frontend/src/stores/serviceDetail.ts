@@ -49,6 +49,21 @@ export const useServiceDetailStore = defineStore('serviceDetail', () => {
     }
   }
 
+  async function deleteCredential(serviceId: number, credentialId: number) {
+    if (!authStore.token) return false
+    try {
+      const response = await fetch(`/api/services/${serviceId}/credentials/${credentialId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${authStore.token}`
+        }
+      })
+      return response.ok
+    } catch {
+      return false
+    }
+  }
+
   function clearDetail() {
     detail.value = null
     error.value = null
@@ -59,6 +74,7 @@ export const useServiceDetailStore = defineStore('serviceDetail', () => {
     loading,
     error,
     fetchServiceDetail,
+    deleteCredential,
     clearDetail,
   }
 })

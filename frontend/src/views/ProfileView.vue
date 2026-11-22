@@ -38,9 +38,9 @@
         <!-- Personal Info Form -->
         <div class="form-card">
           <h3 class="card-title">Особисті дані</h3>
-          <p class="card-subtitle">Ці дані бачить адміністратор, їх можна змінювати.</p>
+          <p class="card-subtitle">Особисті дані адміністратора, їх можна змінювати.</p>
 
-          <form class="profile-form" @submit.prevent="handleSubmit">
+          <form class="profile-form" @submit.prevent="handlePersonalSubmit">
             <div class="form-row">
               <div class="form-group">
                 <label for="full_name">Повне ім'я</label>
@@ -73,28 +73,87 @@
             </div>
 
             <div class="form-actions">
-              <button type="submit" class="btn btn-primary" :disabled="saving">
-                {{ saving ? 'Збереження...' : 'Зберегти зміни' }}
+              <button type="submit" class="btn btn-primary" :disabled="savingPersonal">
+                {{ savingPersonal ? 'Збереження...' : 'Зберегти зміни' }}
               </button>
-              <button type="button" class="btn btn-secondary" @click="resetForm" :disabled="saving">
+              <button type="button" class="btn btn-secondary" @click="resetForm" :disabled="savingPersonal">
                 Скасувати зміни
-              </button>
-              <button type="button" class="btn btn-ghost" @click="goBack">
-                На головну
               </button>
             </div>
 
-            <div v-if="successMessage" class="alert success">
-              {{ successMessage }}
+            <div v-if="personalSuccessMessage" class="alert success">
+              {{ personalSuccessMessage }}
             </div>
-            <div v-if="errorMessage" class="alert error">
-              {{ errorMessage }}
+            <div v-if="personalErrorMessage" class="alert error">
+              {{ personalErrorMessage }}
             </div>
           </form>
         </div>
 
-        <!-- Login Info Card -->
-        <div class="login-info-card">
+        <!-- Login & Password Form — only for admin -->
+        <div v-if="isAdmin" class="form-card">
+          <h3 class="card-title">Дані для входу</h3>
+          <p class="card-subtitle">Змініть логін або пароль для входу в систему.</p>
+
+          <form class="profile-form" @submit.prevent="handleLoginSubmit">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="login">Логін</label>
+                <input
+                  id="login"
+                  v-model="form.login"
+                  type="text"
+                  placeholder="Введіть новий логін"
+                />
+              </div>
+              <div class="form-group">
+                <label for="password">Пароль</label>
+                <div class="password-input-wrapper">
+                  <input
+                    id="password"
+                    v-model="form.password"
+                    :type="showPassword ? 'text' : 'password'"
+                    placeholder="Введіть новий пароль"
+                  />
+                  <button
+                    type="button"
+                    class="password-toggle"
+                    @click="showPassword = !showPassword"
+                    title="Показати/сховати пароль"
+                  >
+                    <svg v-if="!showPassword" viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary" :disabled="savingLogin">
+                {{ savingLogin ? 'Збереження...' : 'Зберегти зміни' }}
+              </button>
+              <button type="button" class="btn btn-secondary" @click="resetLoginForm" :disabled="savingLogin">
+                Скасувати зміни
+              </button>
+            </div>
+
+            <div v-if="loginSuccessMessage" class="alert success">
+              {{ loginSuccessMessage }}
+            </div>
+            <div v-if="loginErrorMessage" class="alert error">
+              {{ loginErrorMessage }}
+            </div>
+          </form>
+        </div>
+
+        <!-- Login Info Card — only for non-admin users -->
+        <div v-if="!isAdmin" class="login-info-card">
           <div class="login-info-icon">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -126,9 +185,13 @@ import { useAuthStore } from '@/stores/auth'
 const router = useRouter()
 const authStore = useAuthStore()
 
-const saving = ref(false)
-const successMessage = ref('')
-const errorMessage = ref('')
+const savingPersonal = ref(false)
+const personalSuccessMessage = ref('')
+const personalErrorMessage = ref('')
+
+const savingLogin = ref(false)
+const loginSuccessMessage = ref('')
+const loginErrorMessage = ref('')
 
 const profile = computed(() => authStore.user)
 const avatarLoaded = ref(false)
@@ -137,8 +200,11 @@ const form = reactive({
   full_name: '',
   phone: '',
   avatar_url: '',
-  status: 'active'
+  login: '',
+  password: ''
 })
+
+const isAdmin = computed(() => profile.value?.role === 'admin')
 
 function getInitials(login: string) {
   return login.charAt(0).toUpperCase()
@@ -162,32 +228,78 @@ function resetForm() {
     form.full_name = profile.value.full_name || ''
     form.phone = profile.value.phone || ''
     form.avatar_url = profile.value.avatar_url || ''
-    form.status = profile.value.status || 'active'
+    form.login = profile.value.login || ''
+    form.password = ''
   }
-  successMessage.value = ''
-  errorMessage.value = ''
+  personalSuccessMessage.value = ''
+  personalErrorMessage.value = ''
+  loginSuccessMessage.value = ''
+  loginErrorMessage.value = ''
 }
 
-async function handleSubmit() {
-  saving.value = true
-  successMessage.value = ''
-  errorMessage.value = ''
+function resetLoginForm() {
+  if (profile.value) {
+    form.login = profile.value.login || ''
+    form.password = ''
+  }
+  loginSuccessMessage.value = ''
+  loginErrorMessage.value = ''
+}
 
-  const result = await authStore.updateProfile({
+const showPassword = ref(false)
+
+async function handlePersonalSubmit() {
+  savingPersonal.value = true
+  personalSuccessMessage.value = ''
+  personalErrorMessage.value = ''
+
+  const data = {
     full_name: form.full_name,
     phone: form.phone,
     avatar_url: form.avatar_url
-  })
+  }
 
-  saving.value = false
+  const result = await authStore.updateProfile(data)
+
+  savingPersonal.value = false
 
   if (result) {
-    successMessage.value = 'Профіль успішно оновлено!'
+    personalSuccessMessage.value = 'Особисті дані успішно оновлено!'
     setTimeout(() => {
-      successMessage.value = ''
+      personalSuccessMessage.value = ''
     }, 3000)
   } else {
-    errorMessage.value = 'Помилка при збереженні профілю'
+    personalErrorMessage.value = 'Помилка при збереженні особистих даних'
+  }
+}
+
+async function handleLoginSubmit() {
+  savingLogin.value = true
+  loginSuccessMessage.value = ''
+  loginErrorMessage.value = ''
+
+  const data: any = {}
+
+  if (form.login.trim()) {
+    data.login = form.login.trim()
+  }
+  if (form.password.trim()) {
+    data.password = form.password.trim()
+  }
+
+  const result = await authStore.updateProfile(data)
+
+  savingLogin.value = false
+
+  if (result) {
+    loginSuccessMessage.value = 'Дані для входу успішно оновлено!'
+    form.password = ''
+    showPassword.value = false
+    setTimeout(() => {
+      loginSuccessMessage.value = ''
+    }, 3000)
+  } else {
+    loginErrorMessage.value = 'Помилка при збереженні даних для входу'
   }
 }
 
@@ -380,6 +492,48 @@ onMounted(() => {
   border-color: #3b82f6;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
   background-color: white;
+}
+
+/* Password Input Wrapper */
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper input {
+  width: 100%;
+  padding: 0.6rem 2.5rem 0.6rem 0.8rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+  background-color: #f8fafc;
+}
+
+.password-input-wrapper input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  background-color: white;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.password-toggle:hover {
+  color: #475569;
 }
 
 .form-actions {

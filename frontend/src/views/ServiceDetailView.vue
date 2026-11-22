@@ -22,35 +22,6 @@
 
     <!-- Service Detail Content -->
     <template v-else-if="detailStore.detail">
-      <div class="detail-header">
-        <div class="service-title-row">
-          <div class="service-avatar" :style="{ backgroundColor: serviceColor }">
-            <img
-              v-if="detailStore.detail.service_logo_url"
-              :src="detailStore.detail.service_logo_url"
-              :alt="detailStore.detail.service_name"
-              class="service-avatar-img"
-              @error="handleAvatarError"
-            />
-            <span v-else class="avatar-letter">{{ getInitials(detailStore.detail.service_name) }}</span>
-          </div>
-          <div class="service-title-info">
-            <h1 class="service-name">{{ detailStore.detail.service_name }}</h1>
-            <p class="service-description">
-              Паролі для {{ detailStore.detail.service_name }}, які мають до них доступ
-            </p>
-          </div>
-        </div>
-
-        <!-- Session Timer -->
-        <div class="session-timer-badge">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 8V12L15 15M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          Сесія ще {{ sessionTimeLeft }}
-        </div>
-      </div>
-
       <!-- Service Info Card -->
       <div class="service-info-card">
         <div class="service-info-left">
@@ -145,20 +116,30 @@
                 <th>Пароль</th>
                 <th>Коментар</th>
                 <th>Користувачі</th>
+                <th v-if="isAdmin">Дії</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="detailStore.detail.credentials.length === 0">
-                <td colspan="5" class="empty-credentials">
+                <td :colspan="isAdmin ? 6 : 5" class="empty-credentials">
                   <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M12 15V17M12 11H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   <p>Паролі ще не додано</p>
                 </td>
               </tr>
-              <tr v-for="(cred, index) in detailStore.detail.credentials" :key="cred.credential_id" class="credential-row">
+              <tr v-for="(cred, index) in paginatedCredentials" :key="cred.credential_id" class="credential-row">
                 <td class="cred-name">{{ getCredentialName(cred, index) }}</td>
-                <td class="cred-login">{{ cred.login || '—' }}</td>
+                <td class="cred-login">
+                  <div class="login-cell">
+                    <span class="login-value">{{ cred.login || '—' }}</span>
+                    <button v-if="cred.login" class="btn-icon-sm" @click="copyLogin(cred.login)" title="Копіювати">
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 6H6C4.89543 6 4 6.89543 4 8V18C4 19.1046 4.89543 20 6 20H14C15.1046 20 16 19.1046 16 18V15M12 6H15C16.1046 6 17 6.89543 17 8V14C17 15.1046 16.1046 16 15 16H12V6Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                  </div>
+                </td>
                 <td class="cred-password">
                   <div class="password-cell">
                     <span v-if="visiblePasswords.has(cred.credential_id)" class="password-value">{{ cred.protected_password }}</span>
@@ -187,11 +168,53 @@
                     <span class="access-count">{{ cred.access_count }}</span>
                   </button>
                 </td>
+                <td class="cred-actions" v-if="isAdmin">
+                  <button class="btn-delete-cred" @click="confirmDeleteCredential(cred.credential_id, getCredentialName(cred, index))" title="Видалити пароль">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 6H5H21M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Видалити
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
 
+        <!-- Pagination -->
+        <div v-if="allCredentials.length > 0" class="pagination-row">
+          <span class="pagination-info">Показано {{ paginationStart }}-{{ paginationEnd }} з {{ allCredentials.length }}</span>
+          <div class="pagination-controls">
+            <button class="btn-pagination" :disabled="currentPage === 1" @click="currentPage = 1">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11 17L6 12L11 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M18 17L13 12L18 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button class="btn-pagination" :disabled="currentPage === 1" @click="currentPage--">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <template v-for="page in totalPages" :key="page">
+              <button
+                :class="['btn-pagination', currentPage === page ? 'btn-pagination-active' : '']"
+                @click="currentPage = page"
+              >{{ page }}</button>
+            </template>
+            <button class="btn-pagination" :disabled="currentPage === totalPages" @click="currentPage++">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button class="btn-pagination" :disabled="currentPage === totalPages" @click="currentPage = totalPages">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M13 17L18 12L13 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M6 17L11 12L6 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
     </template>
 
@@ -333,11 +356,8 @@
         <!-- Dialog Footer -->
         <div class="add-dialog-footer">
           <button class="btn btn-add-submit" :disabled="credentialsStore.loading" @click="submitAddCredential">
-            <svg v-if="!credentialsStore.loading" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
             <span v-if="credentialsStore.loading">Збереження...</span>
-            <span v-else>+ Зберегти</span>
+            <span v-else>Зберегти</span>
           </button>
           <button class="btn btn-cancel" @click="closeAddDialog">Закрити</button>
         </div>
@@ -396,6 +416,81 @@
         </div>
       </div>
     </div>
+
+    <!-- Delete Service Confirmation Dialog -->
+    <Teleport to="body">
+      <div v-if="showDeleteServiceDialog" class="dialog-overlay" @click.self="showDeleteServiceDialog = false">
+        <div class="edit-service-dialog" style="max-width: 400px;">
+          <div class="edit-dialog-header">
+            <h3 class="edit-dialog-title">Видалити джерело?</h3>
+            <button class="btn-close" @click="showDeleteServiceDialog = false">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div style="margin-bottom: 1.25rem;">
+            <p style="margin: 0; color: #475569; font-size: 0.875rem;">
+              Ви дійсно хочете видалити <strong>{{ detailStore.detail?.service_name }}</strong>? Усі паролі та доступи будуть втрачені.
+            </p>
+          </div>
+          <div class="edit-dialog-footer">
+            <button class="btn btn-secondary" @click="showDeleteServiceDialog = false">Скасувати</button>
+            <button class="btn btn-danger" @click="handleDeleteService">Видалити</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Delete Credential Confirmation Dialog -->
+    <Teleport to="body">
+      <div v-if="showDeleteCredentialDialog" class="dialog-overlay" @click.self="closeDeleteCredentialDialog">
+        <div class="edit-service-dialog" style="max-width: 400px;">
+          <div class="edit-dialog-header">
+            <h3 class="edit-dialog-title">Видалити пароль?</h3>
+            <button class="btn-close" @click="closeDeleteCredentialDialog">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div style="margin-bottom: 1.25rem;">
+            <p style="margin: 0; color: #475569; font-size: 0.875rem;">
+              Ви дійсно хочете видалити пароль <strong>{{ deleteCredentialTargetName }}</strong>? Усі доступи до цього пароля будуть втрачені.
+            </p>
+          </div>
+          <div class="edit-dialog-footer">
+            <button class="btn btn-secondary" @click="closeDeleteCredentialDialog">Скасувати</button>
+            <button class="btn btn-danger" @click="handleDeleteCredential">Видалити</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Revoke Access Confirmation Dialog -->
+    <Teleport to="body">
+      <div v-if="showRevokeAccessDialog" class="dialog-overlay" @click.self="showRevokeAccessDialog = false">
+        <div class="edit-service-dialog" style="max-width: 400px;">
+          <div class="edit-dialog-header">
+            <h3 class="edit-dialog-title">Забрати доступ?</h3>
+            <button class="btn-close" @click="showRevokeAccessDialog = false">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div style="margin-bottom: 1.25rem;">
+            <p style="margin: 0; color: #475569; font-size: 0.875rem;">
+              Забрати доступ до пароля у <strong>{{ revokeAccessTargetName }}</strong>?
+            </p>
+          </div>
+          <div class="edit-dialog-footer">
+            <button class="btn btn-secondary" @click="showRevokeAccessDialog = false">Скасувати</button>
+            <button class="btn btn-danger" @click="handleRemoveAccess">Забрати доступ</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- Access Dialog -->
     <div v-if="showAccessDialog" class="dialog-overlay" @click.self="closeAccessDialog">
@@ -506,6 +601,29 @@ const credentialsStore = useCredentialsStore()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 const visiblePasswords = ref<Set<number>>(new Set())
 
+// Pagination
+const currentPage = ref(1)
+const perPage = 10
+
+const allCredentials = computed(() => detailStore.detail?.credentials || [])
+
+const totalPages = computed(() => Math.ceil(allCredentials.value.length / perPage) || 1)
+
+const paginatedCredentials = computed(() => {
+  const start = (currentPage.value - 1) * perPage
+  return allCredentials.value.slice(start, start + perPage)
+})
+
+const paginationStart = computed(() => {
+  if (allCredentials.value.length === 0) return 0
+  return (currentPage.value - 1) * perPage + 1
+})
+
+const paginationEnd = computed(() => {
+  const end = currentPage.value * perPage
+  return end > allCredentials.value.length ? allCredentials.value.length : end
+})
+
 const accessDialogTitle = computed(() => {
   return currentCredentialId.value === null ? 'Надати доступ' : 'Доступ до пароля'
 })
@@ -566,17 +684,46 @@ const addPasswordVisible = ref(false)
 
 const serviceId = computed(() => Number(route.params.id))
 
+// Delete service confirmation dialog
+const showDeleteServiceDialog = ref(false)
+
+// Delete credential confirmation dialog
+const showDeleteCredentialDialog = ref(false)
+const deleteCredentialTargetId = ref<number | null>(null)
+const deleteCredentialTargetName = ref('')
+
+function confirmDeleteCredential(credentialId: number, name: string) {
+  deleteCredentialTargetId.value = credentialId
+  deleteCredentialTargetName.value = name
+  showDeleteCredentialDialog.value = true
+}
+
+function closeDeleteCredentialDialog() {
+  showDeleteCredentialDialog.value = false
+  deleteCredentialTargetId.value = null
+  deleteCredentialTargetName.value = ''
+}
+
+async function handleDeleteCredential() {
+  if (deleteCredentialTargetId.value === null) return
+  const success = await detailStore.deleteCredential(serviceId.value, deleteCredentialTargetId.value)
+  if (success) {
+    await detailStore.fetchServiceDetail(serviceId.value)
+    closeDeleteCredentialDialog()
+  }
+}
+
+// Revoke access confirmation dialog
+const showRevokeAccessDialog = ref(false)
+const revokeAccessTargetUserId = ref<number | null>(null)
+const revokeAccessTargetName = ref('')
+
 const serviceColor = computed(() => {
   const colors = ['#5865F2', '#EA4335', '#0052CC', '#24292E', '#FF6C37', '#1DA1F2', '#0073B1', '#E60023', '#4267B2', '#000000']
   const index = (serviceId.value - 1) % colors.length
   return colors[index]!
 })
 
-const sessionTimeLeft = computed(() => {
-  const hours = 11
-  const minutes = 42
-  return `${hours} год ${minutes} хв`
-})
 
 function getInitials(name: string) {
   return name.charAt(0).toUpperCase()
@@ -623,6 +770,14 @@ function copyPassword(credentialId: number) {
   console.log('Копіювати пароль:', credentialId)
 }
 
+function copyLogin(login: string) {
+  navigator.clipboard.writeText(login).then(() => {
+    console.log('Логін скопійовано:', login)
+  }).catch(() => {
+    console.log('Копіювати логін:', login)
+  })
+}
+
 function openGeneratePassword() {
   showAddDialog.value = true
   addForm.value = { name: '', login: '', password: '', comment: '' }
@@ -655,9 +810,14 @@ function editService() {
 
 async function deleteService() {
   if (!detailStore.detail) return
-  if (!confirm('Видалити це джерело?')) return
+  showDeleteServiceDialog.value = true
+}
+
+async function handleDeleteService() {
+  if (!detailStore.detail) return
   const result = await servicesStore.deleteService(detailStore.detail.service_id)
   if (result) {
+    showDeleteServiceDialog.value = false
     router.push('/')
   }
 }
@@ -785,10 +945,20 @@ async function addUserAccess(userId: number) {
 
 async function removeAccess(userId: number) {
   if (!currentCredentialId.value) return
-  const success = await accessStore.revokeAccess(serviceId.value, currentCredentialId.value, userId)
+  const user = accessStore.usersWithAccess.find((u: any) => u.user_id === userId)
+  revokeAccessTargetUserId.value = userId
+  revokeAccessTargetName.value = user?.full_name || user?.login || `Користувач #${userId}`
+  showRevokeAccessDialog.value = true
+}
+
+async function handleRemoveAccess() {
+  if (!currentCredentialId.value || revokeAccessTargetUserId.value === null) return
+  const success = await accessStore.revokeAccess(serviceId.value, currentCredentialId.value, revokeAccessTargetUserId.value)
   if (success) {
-    // Оновлюємо детальну інформацію про сервіс
     await detailStore.fetchServiceDetail(serviceId.value)
+    showRevokeAccessDialog.value = false
+    revokeAccessTargetUserId.value = null
+    revokeAccessTargetName.value = ''
   }
 }
 
@@ -921,21 +1091,6 @@ onMounted(async () => {
   margin: 0;
 }
 
-.session-timer-badge {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: #f1f5f9;
-  padding: 0.5rem 1rem;
-  border-radius: 2rem;
-  font-size: 0.875rem;
-  color: #64748b;
-}
-
-.session-timer-badge svg {
-  width: 16px;
-  height: 16px;
-}
 
 /* Service Info Card */
 .service-info-card {
@@ -1122,6 +1277,16 @@ onMounted(async () => {
   color: #64748b;
 }
 
+.login-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.login-value {
+  color: #64748b;
+}
+
 .cred-password {
   white-space: nowrap;
 }
@@ -1168,6 +1333,67 @@ onMounted(async () => {
 .btn-icon-sm svg {
   width: 14px;
   height: 14px;
+}
+
+/* Pagination */
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 0;
+  margin-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.pagination-info {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.btn-pagination {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 0.375rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #475569;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-pagination svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-pagination:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.btn-pagination:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-pagination-active {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #fff !important;
 }
 
 .cred-comment {
@@ -1336,6 +1562,31 @@ onMounted(async () => {
 
 .access-btn .access-count {
   font-weight: 600;
+}
+
+/* Delete Credential Button in Table */
+.btn-delete-cred {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  color: #dc2626;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-delete-cred:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.btn-delete-cred svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Dialog Overlay */
@@ -1661,6 +1912,9 @@ onMounted(async () => {
   cursor: pointer;
   transition: all 0.2s;
   border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-close-dialog:hover {
@@ -1901,6 +2155,9 @@ onMounted(async () => {
   cursor: pointer;
   transition: all 0.2s;
   border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-cancel:hover {
@@ -1983,6 +2240,22 @@ onMounted(async () => {
 .edit-dialog-footer .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.edit-dialog-footer .btn-danger {
+  background: #dc2626;
+  color: white;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.edit-dialog-footer .btn-danger:hover {
+  background: #b91c1c;
 }
 
 /* Responsive */

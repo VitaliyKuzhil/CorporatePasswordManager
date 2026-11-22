@@ -1,7 +1,7 @@
 <template>
   <aside class="sidebar">
     <div class="sidebar-header">
-      <div class="logo">
+      <div class="logo" @click="goHome">
         <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="#4ade80"/>
           <path d="M2 17L12 22L22 17" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -70,6 +70,14 @@ const getInitials = (login: string) => {
   return login.charAt(0).toUpperCase()
 }
 
+const goHome = () => {
+  if (isAdmin.value) {
+    router.push({ name: 'services' })
+  } else {
+    router.push({ name: 'home' })
+  }
+}
+
 const goToProfile = () => {
   router.push({ name: 'profile' })
 }
@@ -101,6 +109,12 @@ const handleLogout = () => {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.logo:hover {
+  opacity: 0.8;
 }
 
 .logo-icon {

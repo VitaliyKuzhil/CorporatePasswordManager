@@ -15,6 +15,8 @@ interface UpdateProfileData {
   full_name?: string
   phone?: string
   avatar_url?: string
+  login?: string
+  password?: string
 }
 
 export const useAuthStore = defineStore('auth', () => {

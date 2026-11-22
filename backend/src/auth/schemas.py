@@ -22,3 +22,5 @@ class UpdateProfile(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
     avatar_url: Optional[str] = None
+    login: Optional[str] = None
+    password: Optional[str] = None

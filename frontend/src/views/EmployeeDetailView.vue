@@ -14,16 +14,38 @@
         {{ getInitials(store.employee.full_name || store.employee.login || '?') }}
       </div>
       <div class="employee-details">
-        <h2 class="employee-name">{{ store.employee.full_name }}</h2>
-        <div class="employee-meta">
-          <span class="employee-login">{{ store.employee.login }}</span>
-          <span v-if="store.employee.phone" class="employee-phone">{{ store.employee.phone }}</span>
+        <div class="employee-header">
+          <h2 class="employee-name">{{ store.employee.full_name }}</h2>
+          <div class="employee-badges">
+            <span class="employee-login-badge">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              {{ store.employee.login }}
+            </span>
+            <span :class="['status-badge', store.employee.status === 'active' ? 'status-active' : 'status-blocked']">
+              {{ store.employee.status === 'active' ? 'Активний' : 'Заблокований' }}
+            </span>
+            <span class="role-badge">{{ store.employee.role === 'admin' ? 'Адміністратор' : 'Співробітник' }}</span>
+          </div>
+        </div>
+        <div class="employee-info-grid">
+          <div class="info-item">
+            <span class="info-label">Телефон</span>
+            <span class="info-value">{{ store.employee.phone || '+380 50 000 00 00' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Роль</span>
+            <span class="info-value">{{ store.employee.role === 'admin' ? 'Адміністратор' : 'Співробітник' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Доступних паролів</span>
+            <span class="info-value">{{ store.employee.access_count || 0 }}</span>
+          </div>
         </div>
       </div>
-      <div class="employee-status-actions">
-        <span :class="['status-badge', store.employee.status === 'active' ? 'status-active' : 'status-blocked']">
-          {{ store.employee.status === 'active' ? 'Активний' : 'Заблокований' }}
-        </span>
+      <div class="employee-actions">
         <button class="btn-action btn-edit" @click="openEditDialog">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13M16 2L22 8M16 2V8M22 8H16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -62,49 +84,80 @@
       </div>
     </div>
 
-    <!-- Main Content -->
-    <div class="main-content">
-      <!-- Grant All Button -->
-      <div class="grant-all-section">
-        <button class="btn btn-grant-all" @click="openGrantAllDialog">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M8.5 11a4 4 0 100-8 4 4 0 000 8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M20 8v6M20 11H14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          Надати всі паролі
-        </button>
-      </div>
-
-      <!-- Granted Access Section -->
-      <div class="access-section">
+    <!-- Granted Access Section -->
+    <div class="access-section">
         <div class="section-header">
-          <h3>Надані доступи ({{ store.credentials.length }})</h3>
+          <div class="section-title-row">
+            <h3>Надані доступи <span class="count-badge">{{ filteredCredentials.length }}</span></h3>
+            <button class="btn btn-grant-all" @click="openGrantAllDialog">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M8.5 11a4 4 0 100-8 4 4 0 000 8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M20 8v6M20 11H14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Надати всі паролі
+            </button>
+          </div>
+          <p class="section-description">Паролі, які надані може розшифровувати, переглядати й копіювати.</p>
         </div>
 
-        <div v-if="store.credentials.length === 0" class="empty-state">
-          <p>Доступів ще не надано</p>
-        </div>
-
-        <div v-for="cred in store.credentials" :key="cred.credential_id" class="access-row">
-          <div class="access-service">
-            <div class="service-icon" :style="{ backgroundColor: getServiceColor(cred.service_name) }">
-              <img
-                v-if="cred.service_logo_url"
-                :src="cred.service_logo_url"
-                :alt="cred.service_name"
-                class="service-logo"
-                @error="handleLogoError($event, cred)"
+        <!-- Filter Block -->
+        <div class="filter-block">
+          <div class="filter-row">
+            <div class="search-input-wrapper">
+              <input
+                v-model="accessSearch"
+                type="text"
+                placeholder="Пошук по сервісах, логінах..."
+                class="form-input"
               />
-              <span v-else class="service-letter">{{ cred.service_name.charAt(0).toUpperCase() }}</span>
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="search-icon">
+                <path d="M21 21L16.5 16.5M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
             </div>
-            <div class="service-info">
-              <span class="service-name">{{ cred.service_name }}</span>
-              <span class="service-url">{{ cred.service_url || '' }}</span>
+            <select v-model="selectedServiceFilter" class="form-select">
+              <option value="">Усі сервіси</option>
+              <option v-for="svc in uniqueServices" :key="svc.service_id" :value="svc.service_id">
+                {{ svc.service_name }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Table Header -->
+        <div class="table-header">
+          <span class="col-service">Сервіс</span>
+          <span class="col-login">Логін</span>
+          <span class="col-password">Пароль</span>
+          <span class="col-actions"></span>
+        </div>
+
+        <div v-if="filteredCredentials.length === 0" class="empty-state">
+          <p v-if="store.credentials.length === 0">Доступів ще не надано</p>
+          <p v-else>Нічого не знайдено</p>
+        </div>
+
+        <div v-for="cred in filteredCredentials" :key="cred.credential_id" class="access-row">
+          <div class="col-service">
+            <div class="access-service">
+              <div class="service-icon" :style="{ backgroundColor: getServiceColor(cred.service_name) }">
+                <img
+                  v-if="cred.service_logo_url"
+                  :src="cred.service_logo_url"
+                  :alt="cred.service_name"
+                  class="service-logo"
+                  @error="handleLogoError($event, cred)"
+                />
+                <span v-else class="service-letter">{{ cred.service_name.charAt(0).toUpperCase() }}</span>
+              </div>
+              <div class="service-info">
+                <span class="service-name">{{ cred.service_name }}</span>
+                <span class="service-url">{{ cred.service_url || '' }}</span>
+              </div>
             </div>
           </div>
 
-          <div class="access-login">
+          <div class="col-login">
             <div class="login-field">
               <span class="login-value">{{ cred.login }}</span>
               <button class="btn-copy" title="Копіювати" @click="copyToClipboard(cred.login)">
@@ -116,7 +169,7 @@
             </div>
           </div>
 
-          <div class="access-password">
+          <div class="col-password">
             <div class="password-field">
               <span v-if="cred.showPassword" class="password-value">{{ cred.protected_password }}</span>
               <span v-else class="password-dots">{{ '•'.repeat(Math.min(cred.protected_password.length, 12)) }}</span>
@@ -138,7 +191,7 @@
             </div>
           </div>
 
-          <div class="access-actions">
+          <div class="col-actions">
             <button class="btn-icon-small btn-grant-per-service" title="Надати доступ" @click="openGrantAccessForCredential(cred)">
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -154,8 +207,25 @@
             </button>
           </div>
         </div>
+
+        <!-- Pagination -->
+        <div v-if="filteredCredentials.length > 0" class="pagination-row">
+          <span class="pagination-info">Показано 1-{{ filteredCredentials.length }} з {{ filteredCredentials.length }}</span>
+          <div class="pagination-controls">
+            <button class="btn-pagination" disabled>
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button class="btn-pagination btn-pagination-active">1</button>
+            <button class="btn-pagination" disabled>
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
 
     <!-- Grant Access Dialog -->
     <Teleport to="body">
@@ -339,6 +409,57 @@
       </div>
     </Teleport>
 
+    <!-- Toggle Status Confirmation Dialog -->
+    <Teleport to="body">
+      <div v-if="showToggleDialog" class="modal-overlay" @click.self="showToggleDialog = false">
+        <div class="modal-dialog modal-small">
+          <div class="modal-header">
+            <h3>{{ store.employee?.status === 'active' ? 'Заблокувати працівника?' : 'Розблокувати працівника?' }}</h3>
+            <button class="btn-close" @click="showToggleDialog = false">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <p>
+              {{ store.employee?.status === 'active' ? 'Ви дійсно хочете заблокувати' : 'Ви дійсно хочете розблокувати' }}
+              <strong>{{ store.employee?.full_name }}</strong>?
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="showToggleDialog = false">Скасувати</button>
+            <button :class="['btn', store.employee?.status === 'active' ? 'btn-danger' : 'btn-primary']" @click="handleToggleStatus">
+              {{ store.employee?.status === 'active' ? 'Заблокувати' : 'Розблокувати' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Revoke Credential Confirmation Dialog -->
+    <Teleport to="body">
+      <div v-if="showRevokeDialog" class="modal-overlay" @click.self="closeRevokeDialog">
+        <div class="modal-dialog modal-small">
+          <div class="modal-header">
+            <h3>Забрати доступ?</h3>
+            <button class="btn-close" @click="closeRevokeDialog">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <p>Забрати доступ до <strong>{{ revokeTargetService }}</strong> (логін: {{ revokeTargetLogin }})?</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="closeRevokeDialog">Скасувати</button>
+            <button class="btn btn-danger" @click="handleRevokeCredential">Забрати доступ</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Delete Confirmation Dialog -->
     <Teleport to="body">
       <div v-if="showDeleteDialog" class="modal-overlay" @click.self="showDeleteDialog = false">
@@ -380,6 +501,51 @@ const servicesStore = useServicesStore()
 const authStore = useAuthStore()
 
 const userId = computed(() => Number(route.params.id))
+
+// Access search and filter
+const accessSearch = ref('')
+const selectedServiceFilter = ref<number | ''>('')
+
+const uniqueServices = computed(() => {
+  const seen = new Set<number>()
+  return store.credentials
+    .filter(cred => {
+      const id = cred.service_id
+      if (seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
+    .map(cred => ({ service_id: cred.service_id, service_name: cred.service_name }))
+})
+
+const filteredCredentials = computed(() => {
+  let result = store.credentials
+
+  // Filter by service
+  if (selectedServiceFilter.value !== '') {
+    result = result.filter(cred => cred.service_id === selectedServiceFilter.value)
+  }
+
+  // Filter by search query
+  if (accessSearch.value.trim()) {
+    const query = accessSearch.value.trim().toLowerCase()
+    result = result.filter(cred => {
+      return (
+        cred.service_name.toLowerCase().includes(query) ||
+        cred.login.toLowerCase().includes(query) ||
+        (cred.comment && cred.comment.toLowerCase().includes(query)) ||
+        (cred.service_url && cred.service_url.toLowerCase().includes(query))
+      )
+    })
+  }
+
+  return result
+})
+
+function resetAccessFilter() {
+  accessSearch.value = ''
+  selectedServiceFilter.value = ''
+}
 
 const avatarColors = [
   '#059669', '#2563eb', '#d97706', '#7c3aed', '#dc2626',
@@ -529,12 +695,40 @@ async function handleGrantAllToUser(targetUserId: number) {
   }
 }
 
-// Revoke credential
-async function revokeCredential(credential_id: number) {
-  const success = await store.revokeCredential(userId.value, credential_id)
+// Revoke credential confirmation
+const showRevokeDialog = ref(false)
+const revokeTargetCredential = ref<number | null>(null)
+const revokeTargetService = ref<string>('')
+const revokeTargetLogin = ref<string>('')
+
+function confirmRevokeCredential(credential_id: number) {
+  const cred = store.credentials.find(c => c.credential_id === credential_id)
+  if (!cred) return
+  revokeTargetCredential.value = credential_id
+  revokeTargetService.value = cred.service_name
+  revokeTargetLogin.value = cred.login
+  showRevokeDialog.value = true
+}
+
+function closeRevokeDialog() {
+  showRevokeDialog.value = false
+  revokeTargetCredential.value = null
+  revokeTargetService.value = ''
+  revokeTargetLogin.value = ''
+}
+
+async function handleRevokeCredential() {
+  if (revokeTargetCredential.value === null) return
+  const success = await store.revokeCredential(userId.value, revokeTargetCredential.value)
   if (success) {
     await store.fetchEmployee(userId.value)
+    closeRevokeDialog()
   }
+}
+
+// Revoke credential (wrapper for template)
+async function revokeCredential(credential_id: number) {
+  confirmRevokeCredential(credential_id)
 }
 
 // Edit dialog
@@ -577,14 +771,26 @@ async function handleEditEmployee() {
   }
 }
 
-// Toggle status
-async function toggleStatus() {
+// Toggle status confirmation
+const showToggleDialog = ref(false)
+
+function confirmToggleStatus() {
+  showToggleDialog.value = true
+}
+
+async function handleToggleStatus() {
   if (!store.employee) return
   const newStatus = store.employee.status === 'active' ? 'blocked' : 'active'
   const result = await employeesStore.updateStatus(store.employee.user_id, newStatus)
   if (result) {
     store.employee.status = newStatus
   }
+  showToggleDialog.value = false
+}
+
+// Toggle status (wrapper for template)
+async function toggleStatus() {
+  confirmToggleStatus()
 }
 
 // Delete dialog
@@ -644,7 +850,7 @@ onMounted(async () => {
 /* Employee Card */
 .employee-card {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 1.5rem;
   padding: 1.5rem;
   background: #fff;
@@ -656,7 +862,7 @@ onMounted(async () => {
 .employee-avatar-large {
   width: 64px;
   height: 64px;
-  border-radius: 50%;
+  border-radius: 0.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -668,6 +874,14 @@ onMounted(async () => {
 
 .employee-details {
   flex: 1;
+  min-width: 0;
+}
+
+.employee-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 .employee-name {
@@ -676,18 +890,71 @@ onMounted(async () => {
   color: #0f172a;
 }
 
-.employee-meta {
-  display: flex;
-  gap: 1rem;
-  margin-top: 0.25rem;
-  font-size: 0.875rem;
-  color: #64748b;
-}
-
-.employee-status-actions {
+.employee-badges {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.employee-login-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.625rem;
+  background: #f1f5f9;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.employee-login-badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.employee-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.info-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.info-value {
+  font-size: 0.875rem;
+  color: #0f172a;
+  font-weight: 500;
+}
+
+.employee-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .status-badge {
@@ -765,42 +1032,6 @@ onMounted(async () => {
   background: #fee2e2;
 }
 
-/* Main Content */
-.main-content {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-/* Grant All Section */
-.grant-all-section {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.grant-all-section .btn-grant-all {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.grant-all-section .btn-grant-all:hover {
-  background: #1d4ed8;
-}
-
-.grant-all-section .btn-grant-all svg {
-  width: 18px;
-  height: 18px;
-}
 
 /* Access Section */
 .access-section {
@@ -810,10 +1041,89 @@ onMounted(async () => {
   padding: 1.5rem;
 }
 
-.section-header h3 {
-  margin: 0 0 1rem;
+.section-header {
+  margin-bottom: 1.25rem;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.section-title-row h3 {
+  margin: 0;
   font-size: 1rem;
   color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.375rem;
+  background: #0f172a;
+  color: #fff;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.section-description {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.btn-grant-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: #0f766e;
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.btn-grant-all:hover {
+  background: #0a5c56;
+}
+
+.btn-grant-all svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Filter Block */
+.filter-block {
+  margin-bottom: 1rem;
+}
+
+.filter-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.filter-row .search-input-wrapper {
+  flex: 1;
+}
+
+.filter-row .form-select {
+  width: 200px;
+  flex-shrink: 0;
 }
 
 .empty-state {
@@ -822,19 +1132,119 @@ onMounted(async () => {
   color: #94a3b8;
 }
 
+/* Table Header */
+.table-header {
+  display: grid;
+  grid-template-columns: 200px 1fr 1fr auto;
+  gap: 1rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.table-header .col-service {
+  display: flex;
+  align-items: center;
+}
+
 .access-row {
   display: grid;
   grid-template-columns: 200px 1fr 1fr auto;
   gap: 1rem;
-  padding: 1rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.75rem;
-  margin-bottom: 0.75rem;
+  padding: 0.875rem 1rem;
   align-items: center;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background-color 0.15s;
 }
 
 .access-row:last-child {
-  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.access-row:hover {
+  background: #f8fafc;
+}
+
+.col-service {
+  display: flex;
+  align-items: center;
+}
+
+.col-login {
+  display: flex;
+  align-items: center;
+}
+
+.col-password {
+  display: flex;
+  align-items: center;
+}
+
+.col-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+/* Pagination */
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 0 0;
+  margin-top: 0.5rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.pagination-info {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.btn-pagination {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #475569;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-pagination:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.btn-pagination:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-pagination svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-pagination-active {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #fff;
 }
 
 .access-service {
@@ -958,10 +1368,6 @@ onMounted(async () => {
   height: 16px;
 }
 
-.access-actions {
-  display: flex;
-  gap: 0.5rem;
-}
 
 .btn-delete-small {
   color: #dc2626;
@@ -1363,6 +1769,13 @@ onMounted(async () => {
   .access-row {
     grid-template-columns: 1fr;
     gap: 0.75rem;
+  }
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .filter-row .form-select {
+    width: 100%;
   }
 }
 </style>

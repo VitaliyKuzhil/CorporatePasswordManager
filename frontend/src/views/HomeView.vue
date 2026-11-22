@@ -93,7 +93,7 @@
 
       <div
         v-else
-        v-for="(service, index) in servicesStore.filteredServices"
+        v-for="(service, index) in paginatedServices"
         :key="service.service_id"
         class="source-card"
       >
@@ -137,6 +137,41 @@
           <button v-if="isAdmin" class="btn-icon btn-delete-icon" @click.stop="confirmDelete(service)" title="Видалити">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M3 6H5H21M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <div v-if="servicesStore.filteredServices.length > 0" class="pagination-row">
+        <span class="pagination-info">Показано {{ paginationStart }}-{{ paginationEnd }} з {{ servicesStore.filteredServices.length }}</span>
+        <div class="pagination-controls">
+          <button class="btn-pagination" :disabled="currentPage === 1" @click="currentPage = 1">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M11 17L6 12L11 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M18 17L13 12L18 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button class="btn-pagination" :disabled="currentPage === 1" @click="currentPage--">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <template v-for="page in totalPages" :key="page">
+            <button
+              :class="['btn-pagination', currentPage === page ? 'btn-pagination-active' : '']"
+              @click="currentPage = page"
+            >{{ page }}</button>
+          </template>
+          <button class="btn-pagination" :disabled="currentPage === totalPages" @click="currentPage++">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button class="btn-pagination" :disabled="currentPage === totalPages" @click="currentPage = totalPages">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M13 17L18 12L13 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M6 17L11 12L6 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </button>
         </div>
@@ -219,6 +254,27 @@ const authStore = useAuthStore()
 const servicesStore = useServicesStore()
 
 const isAdmin = computed(() => authStore.user?.role === 'admin')
+
+// Pagination
+const currentPage = ref(1)
+const perPage = 10
+
+const totalPages = computed(() => Math.ceil(servicesStore.filteredServices.length / perPage) || 1)
+
+const paginatedServices = computed(() => {
+  const start = (currentPage.value - 1) * perPage
+  return servicesStore.filteredServices.slice(start, start + perPage)
+})
+
+const paginationStart = computed(() => {
+  if (servicesStore.filteredServices.length === 0) return 0
+  return (currentPage.value - 1) * perPage + 1
+})
+
+const paginationEnd = computed(() => {
+  const end = currentPage.value * perPage
+  return end > servicesStore.filteredServices.length ? servicesStore.filteredServices.length : end
+})
 
 // Dialog state
 const showDialog = ref(false)
@@ -589,6 +645,66 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+/* Pagination */
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 0;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.pagination-info {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.btn-pagination {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 0.375rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #475569;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-pagination svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-pagination:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.btn-pagination:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-pagination-active {
+  background: #0f172a !important;
+  border-color: #0f172a !important;
+  color: #fff !important;
 }
 
 .source-card {
