@@ -27,6 +27,12 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if user.status == "blocked":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Обліковий запис заблоковано. Зверніться до адміністратора.",
+        )
+
     access_token = create_access_token(data={"sub": user.login, "role": user.role})
     return {"access_token": access_token, "token_type": "bearer"}
 

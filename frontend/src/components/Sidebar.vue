@@ -12,18 +12,23 @@
     </div>
 
     <nav class="sidebar-nav">
-      <div class="nav-section">
+      <div class="nav-section" v-if="!isAdmin">
         <router-link to="/" class="nav-item" active-class="active">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15 7C15 5.34315 13.6569 4 12 4C10.3431 4 9 5.34315 9 7C9 10 12 12 12 12M12 12V14M12 12H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="nav-label">Мої доступи</span>
+        </router-link>
+      </div>
+
+      <div class="nav-section" v-if="isAdmin">
+        <router-link to="/services" class="nav-item" active-class="active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M3 12L5 10M5 10L9 14M5 10L9 6M19 12L21 10M21 10L17 6M21 10L17 14M12 2L12 22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           <span class="nav-label">Список джерел</span>
-          <span class="nav-badge" v-if="passwordCount">{{ passwordCount }}</span>
         </router-link>
 
-      </div>
-
-      <div class="nav-section" v-if="isAdmin">
         <router-link to="/users" class="nav-item" active-class="active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M17 21V19C17 18.4696 16.7893 17.9609 16.4142 17.5858C16.0391 17.2107 15.5304 17 15 17H9C8.46957 17 7.96086 17.2107 7.58579 17.5858C7.21071 17.9609 7 18.4696 7 19V21M9 11C10.6569 11 12 9.65685 12 8C12 6.34315 10.6569 5 9 5C7.34315 5 6 6.34315 6 8C6 9.65685 7.34315 11 9 11ZM14 7C15.6569 7 17 5.65685 17 4C17 2.34315 15.6569 1 14 1C12.3431 1 11 2.34315 11 4C11 5.65685 12.3431 7 14 7ZM20 19V21M20 17C19.4696 17 18.9609 17.2107 18.5858 17.5858C18.2107 17.9609 18 18.4696 18 19V21M14 11C15.6569 11 17 12.3431 17 14C17 14.5304 16.7893 15.0391 16.4142 15.4142C16.0391 15.7893 15.5304 16 15 16H9C8.46957 16 7.96086 15.7893 7.58579 15.4142C7.21071 15.0391 7 14.5304 7 14C7 12.3431 8.34315 11 10 11H14Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
