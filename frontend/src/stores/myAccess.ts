@@ -6,6 +6,7 @@ export interface MyAccessCredential {
   credential_id: number
   login: string | null
   protected_password: string | null
+  totp_secret: string | null
   comment: string | null
 }
 
@@ -14,6 +15,7 @@ export interface MyAccessService {
   service_name: string
   service_url: string | null
   service_logo_url: string | null
+  auth_type: 'password_2fa' | 'sso_link'
   credentials: MyAccessCredential[]
 }
 

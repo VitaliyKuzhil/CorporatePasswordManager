@@ -169,6 +169,12 @@
                   </button>
                 </td>
                 <td class="cred-actions" v-if="isAdmin">
+                  <button class="btn-edit-cred" @click="openEditCredentialDialog(cred)" title="Редагувати пароль">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Редагувати
+                  </button>
                   <button class="btn-delete-cred" @click="confirmDeleteCredential(cred.credential_id, getCredentialName(cred, index))" title="Видалити пароль">
                     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M3 6H5H21M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -300,6 +306,24 @@
             />
           </div>
 
+          <!-- TOTP Secret Field (only for password_2fa) -->
+          <div v-if="detailStore.detail?.auth_type === 'password_2fa'" class="form-group">
+            <label class="form-label">
+              TOTP секрет (Base32)
+              <span class="label-hint">Необов'язково</span>
+            </label>
+            <input
+              v-model="addForm.totp_secret"
+              type="text"
+              class="form-input"
+              placeholder="Наприклад, ms6p ztga mxgy 2vxd pvry ta4u 3mgi ec42"
+            />
+            <p class="form-hint">
+              Якщо прив'язуєте Google Authenticator, вставте секрет, отриманий від Google.<br>
+              Якщо залишити порожнім, буде згенеровано новий секрет автоматично.
+            </p>
+          </div>
+
           <!-- Grant Access Section -->
           <div class="grant-access-section">
             <h4 class="grant-access-title">Надати доступ</h4>
@@ -405,6 +429,17 @@
               class="form-input"
               placeholder="https://example.com/logo.png"
             />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Тип входу</label>
+            <select
+              v-model="editForm.auth_type"
+              class="form-input form-select"
+            >
+              <option value="password_2fa">Пароль + 2FA</option>
+              <option value="sso_link">SSO — вхід за посиланням</option>
+            </select>
           </div>
         </div>
 
@@ -578,6 +613,139 @@
         </div>
       </div>
     </div>
+
+    <!-- Edit Credential Dialog -->
+    <Teleport to="body">
+      <div v-if="showEditCredentialDialog" class="dialog-overlay" @click.self="closeEditCredentialDialog">
+        <div class="edit-credential-dialog">
+          <div class="edit-credential-dialog-header">
+            <h3 class="edit-credential-dialog-title">Редагувати пароль</h3>
+            <button class="btn-close" @click="closeEditCredentialDialog">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="edit-credential-dialog-body">
+            <div class="form-group">
+              <label class="form-label">Логін</label>
+              <input
+                v-model="editCredentialForm.login"
+                type="text"
+                class="form-input"
+                placeholder="Наприклад, email@gmail.com"
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Пароль</label>
+              <div class="password-input-wrapper">
+                <input
+                  v-model="editCredentialForm.password"
+                  :type="editCredentialShowPassword ? 'text' : 'password'"
+                  class="form-input"
+                  placeholder="Введіть новий пароль"
+                />
+                <button
+                  type="button"
+                  class="btn-toggle-password"
+                  @click="editCredentialShowPassword = !editCredentialShowPassword"
+                  :title="editCredentialShowPassword ? 'Сховати' : 'Показати'"
+                >
+                  <svg v-if="!editCredentialShowPassword" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 12C1 12 5 4 12 4C19 4 23 12 23 12C23 12 19 20 12 20C5 20 1 12 1 12ZM12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <svg v-else viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C7 20 3 16 3 11C3 8.44 4.06 6.11 5.82 4.5M18.62 4.5C16.86 6.11 15.8 8.44 15.8 11C15.8 16 19.8 20 24.8 20C22.8 20 20.8 19.2 19.18 17.94M1 1L23 23M7.88 7.88C7.3 8.46 6.8 9.18 6.4 10M12 12C12 12.5523 11.5523 13 11 13C10.4477 13 10 12.5523 10 12C10 11.4477 10.4477 11 11 11C11.5523 11 12 11.4477 12 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">TOTP секрет (Base32)</label>
+              <input
+                v-model="editCredentialForm.totp_secret"
+                type="text"
+                class="form-input"
+                placeholder="Наприклад, JBSWY3DPEHPK3PXP"
+              />
+              <p class="form-hint">Залиште порожнім, щоб не змінювати</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Коментар</label>
+              <textarea
+                v-model="editCredentialForm.comment"
+                class="form-input form-textarea"
+                rows="3"
+                placeholder="Додаткова інформація"
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="edit-credential-dialog-footer">
+            <button class="btn btn-secondary" @click="closeEditCredentialDialog">Скасувати</button>
+            <button
+              class="btn btn-primary"
+              @click="submitEditCredential"
+              :disabled="credentialsStore.loading"
+            >
+              {{ credentialsStore.loading ? 'Збереження...' : 'Зберегти' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- TOTP Secret Dialog -->
+    <Teleport to="body">
+      <div v-if="showTotpDialog" class="dialog-overlay" @click.self="closeTotpDialog">
+        <div class="totp-dialog">
+          <div class="totp-dialog-header">
+            <h3 class="totp-dialog-title">Налаштуйте додаток для автентифікації</h3>
+            <button class="btn-close" @click="closeTotpDialog">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="totp-dialog-body">
+            <ol class="totp-steps">
+              <li class="totp-step">
+                У додатку Google Authenticator натисніть значок <strong>+</strong>, а потім — <strong>Ввести ключ налаштування</strong>
+              </li>
+              <li class="totp-step">
+                Вкажіть свою електронну адресу та цей ключ (пробіли не враховуються):
+                <div class="totp-secret-wrapper">
+                  <span class="totp-secret" ref="totpSecretRef">{{ totpSecret }}</span>
+                  <button class="btn-copy-totp" @click="copyTotpSecret" :title="copiedTotp ? 'Скопійовано!' : 'Копіювати'">
+                    <svg v-if="!copiedTotp" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M9 6H6C4.89543 6 4 6.89543 4 8V18C4 19.1046 4.89543 20 6 20H14C15.1046 20 16 19.1046 16 18V15M12 6H15C16.1046 6 17 6.89543 17 8V14C17 15.1046 16.1046 16 15 16H12V6Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <svg v-else viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </li>
+              <li class="totp-step">
+                Переконайтеся, що вибрано параметр <strong>На основі часу</strong>
+              </li>
+              <li class="totp-step">
+                Щоб завершити, натисніть <strong>Додати</strong>
+              </li>
+            </ol>
+          </div>
+
+          <div class="totp-dialog-footer">
+            <button class="btn btn-primary" @click="closeTotpDialog">Готово</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -639,7 +807,8 @@ const showEditDialog = ref(false)
 const editForm = ref({
   service_name: '',
   service_url: '',
-  service_logo_url: ''
+  service_logo_url: '',
+  auth_type: 'password_2fa' as 'password_2fa' | 'sso_link'
 })
 
 function openEditDialog() {
@@ -648,7 +817,8 @@ function openEditDialog() {
   editForm.value = {
     service_name: detailStore.detail.service_name || '',
     service_url: detailStore.detail.service_url || '',
-    service_logo_url: detailStore.detail.service_logo_url || ''
+    service_logo_url: detailStore.detail.service_logo_url || '',
+    auth_type: detailStore.detail.auth_type || 'password_2fa'
   }
 }
 
@@ -661,7 +831,8 @@ async function submitEditService() {
   const result = await servicesStore.updateService(detailStore.detail.service_id, {
     service_name: editForm.value.service_name,
     service_url: editForm.value.service_url || undefined,
-    service_logo_url: editForm.value.service_logo_url || undefined
+    service_logo_url: editForm.value.service_logo_url || undefined,
+    auth_type: editForm.value.auth_type
   })
   if (result) {
     await detailStore.fetchServiceDetail(serviceId.value)
@@ -675,7 +846,8 @@ const addForm = ref({
     name: '',
     login: '',
     password: '',
-    comment: ''
+    comment: '',
+    totp_secret: ''
 })
 const addSelectedUsers = ref<number[]>([])
 const addUserSearchQuery = ref('')
@@ -717,6 +889,65 @@ async function handleDeleteCredential() {
 const showRevokeAccessDialog = ref(false)
 const revokeAccessTargetUserId = ref<number | null>(null)
 const revokeAccessTargetName = ref('')
+
+// TOTP secret dialog state
+const showTotpDialog = ref(false)
+const totpSecret = ref('')
+const copiedTotp = ref(false)
+const totpSecretRef = ref<HTMLElement | null>(null)
+
+// Edit credential dialog state
+const showEditCredentialDialog = ref(false)
+const editCredentialShowPassword = ref(false)
+const editCredentialForm = ref({
+    login: '',
+    password: '',
+    totp_secret: '',
+    comment: ''
+})
+const editingCredentialId = ref<number | null>(null)
+
+function openEditCredentialDialog(cred: any) {
+    editingCredentialId.value = cred.credential_id
+    editCredentialForm.value = {
+        login: cred.login || '',
+        password: cred.protected_password || '',
+        totp_secret: cred.totp_secret || '',
+        comment: cred.comment || ''
+    }
+    editCredentialShowPassword.value = false
+    showEditCredentialDialog.value = true
+}
+
+function closeEditCredentialDialog() {
+    showEditCredentialDialog.value = false
+    editingCredentialId.value = null
+    editCredentialForm.value = {
+        login: '',
+        password: '',
+        totp_secret: '',
+        comment: ''
+    }
+    editCredentialShowPassword.value = false
+}
+
+async function submitEditCredential() {
+    if (editingCredentialId.value === null) return
+    const data: any = {
+        login: editCredentialForm.value.login || null,
+        comment: editCredentialForm.value.comment || null,
+    }
+    if (editCredentialForm.value.password) {
+        data.password = editCredentialForm.value.password
+    }
+    // Завжди відправляємо totp_secret — порожній рядок означає "не змінювати"
+    data.totp_secret = editCredentialForm.value.totp_secret || null
+    const result = await credentialsStore.updateCredential(serviceId.value, editingCredentialId.value, data)
+    if (result) {
+        await detailStore.fetchServiceDetail(serviceId.value)
+        closeEditCredentialDialog()
+    }
+}
 
 const serviceColor = computed(() => {
   const colors = ['#5865F2', '#EA4335', '#0052CC', '#24292E', '#FF6C37', '#1DA1F2', '#0073B1', '#E60023', '#4267B2', '#000000']
@@ -780,7 +1011,7 @@ function copyLogin(login: string) {
 
 function openGeneratePassword() {
   showAddDialog.value = true
-  addForm.value = { name: '', login: '', password: '', comment: '' }
+  addForm.value = { name: '', login: '', password: '', comment: '', totp_secret: '' }
   addSelectedUsers.value = []
   addUserSearchQuery.value = ''
   addSearchResults.value = []
@@ -863,17 +1094,43 @@ function removeSelectedUser(userId: number) {
 
 async function submitAddCredential() {
   if (!addForm.value.password) return
-  const result = await credentialsStore.createCredential(serviceId.value, {
+  const data: any = {
     login: addForm.value.login,
     password: addForm.value.password,
     comment: addForm.value.comment,
     user_ids: addSelectedUsers.value
-  })
+  }
+  // Відправляємо totp_secret тільки якщо вказано вручну
+  if (addForm.value.totp_secret) {
+    data.totp_secret = addForm.value.totp_secret
+  }
+  const result = await credentialsStore.createCredential(serviceId.value, data)
   if (result) {
     closeAddDialog()
     // Оновлюємо деталі сервісу
     detailStore.fetchServiceDetail(serviceId.value)
+    // Якщо це password_2fa сервіс і є totp_secret, показуємо модалку
+    if (result.totp_secret && detailStore.detail?.auth_type === 'password_2fa') {
+      totpSecret.value = result.totp_secret
+      showTotpDialog.value = true
+      copiedTotp.value = false
+    }
   }
+}
+
+function closeTotpDialog() {
+  showTotpDialog.value = false
+  totpSecret.value = ''
+  copiedTotp.value = false
+}
+
+function copyTotpSecret() {
+  navigator.clipboard.writeText(totpSecret.value).then(() => {
+    copiedTotp.value = true
+    setTimeout(() => { copiedTotp.value = false }, 2000)
+  }).catch(() => {
+    console.log('Не вдалося скопіювати секрет')
+  })
 }
 
 function getSelectedUserDisplayName(userId: number): string {
@@ -1770,6 +2027,140 @@ onMounted(async () => {
   color: #dc2626;
 }
 
+/* TOTP Dialog */
+.totp-dialog {
+  background: #1e1e2e;
+  border-radius: 12px;
+  width: 520px;
+  max-width: 95vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.totp-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.totp-dialog-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.totp-dialog-body {
+  padding: 24px;
+}
+
+.totp-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: totp-step;
+}
+
+.totp-step {
+  counter-increment: totp-step;
+  color: #94a3b8;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 16px;
+  padding-left: 32px;
+  position: relative;
+}
+
+.totp-step::before {
+  content: counter(totp-step) '.';
+  position: absolute;
+  left: 0;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.totp-step:last-child {
+  margin-bottom: 0;
+}
+
+.totp-step strong {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.totp-secret-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.totp-secret {
+  font-family: 'Courier New', monospace;
+  font-size: 15px;
+  font-weight: 700;
+  color: #3b82f6;
+  letter-spacing: 1.5px;
+  word-break: break-all;
+  flex: 1;
+  user-select: all;
+}
+
+.btn-copy-totp {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #3b82f6;
+  border-radius: 6px;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.btn-copy-totp:hover {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.btn-copy-totp svg {
+  width: 18px;
+  height: 18px;
+}
+
+.totp-dialog-footer {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.totp-dialog-footer .btn-primary {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.totp-dialog-footer .btn-primary:hover {
+  background: #2563eb;
+}
+
 .btn-remove-access svg {
   width: 18px;
   height: 18px;
@@ -1993,6 +2384,15 @@ onMounted(async () => {
 
 .form-input::placeholder {
   color: #94a3b8;
+}
+
+.form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.25rem;
+  cursor: pointer;
 }
 
 .password-input-wrapper {
@@ -2258,6 +2658,202 @@ onMounted(async () => {
   background: #b91c1c;
 }
 
+/* Edit Credential Button */
+.btn-edit-cred {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-edit-cred:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.btn-edit-cred svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Edit Credential Dialog */
+.edit-credential-dialog {
+  background: #1e1e2e;
+  border-radius: 12px;
+  width: 480px;
+  max-width: 95vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.edit-credential-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.edit-credential-dialog-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.edit-credential-dialog-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.edit-credential-dialog-body .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edit-credential-dialog-body .form-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.edit-credential-dialog-body .form-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #e2e8f0;
+  font-size: 14px;
+  transition: border-color 0.2s;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.edit-credential-dialog-body .form-input:focus {
+  border-color: #3b82f6;
+}
+
+.edit-credential-dialog-body .form-input::placeholder {
+  color: #475569;
+}
+
+.edit-credential-dialog-body .form-textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.edit-credential-dialog-body .form-hint {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+}
+
+.add-dialog-body .form-hint {
+  font-size: 12px;
+  color: #64748b;
+  margin: 4px 0 0 0;
+  line-height: 1.4;
+}
+
+.add-dialog-body .label-hint {
+  font-weight: 400;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.edit-credential-dialog-body .password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.edit-credential-dialog-body .password-input-wrapper .form-input {
+  padding-right: 44px;
+}
+
+.edit-credential-dialog-body .btn-toggle-password {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.2s;
+}
+
+.edit-credential-dialog-body .btn-toggle-password:hover {
+  color: #e2e8f0;
+}
+
+.edit-credential-dialog-body .btn-toggle-password svg {
+  width: 20px;
+  height: 20px;
+}
+
+.edit-credential-dialog-footer {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.edit-credential-dialog-footer .btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.edit-credential-dialog-footer .btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+}
+
+.edit-credential-dialog-footer .btn-primary {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.edit-credential-dialog-footer .btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.edit-credential-dialog-footer .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .service-info-card {
@@ -2287,6 +2883,10 @@ onMounted(async () => {
   .access-dialog {
     width: 90vw;
     max-width: 420px;
+  }
+
+  .edit-credential-dialog {
+    width: 95vw;
   }
 }
 </style>

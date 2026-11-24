@@ -17,6 +17,7 @@ interface ServiceDetail {
   service_logo_url: string | null
   credential_count: number
   access_count: number
+  auth_type: 'password_2fa' | 'sso_link'
   credentials: CredentialItem[]
 }
 

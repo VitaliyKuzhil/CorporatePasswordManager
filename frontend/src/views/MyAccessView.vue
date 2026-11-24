@@ -6,6 +6,12 @@
         <h1 class="page-title">Мої доступи</h1>
         <p class="page-subtitle">Сервіси, до яких адміністратор надав вам доступ</p>
       </div>
+      <div class="session-info" v-if="authStore.user">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2v10M12 18h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Сесія ще {{ sessionRemaining }}</span>
+      </div>
     </div>
 
     <!-- Filter Block -->
@@ -37,93 +43,150 @@
           </option>
         </select>
       </div>
+
+      <div class="filter-select-wrapper">
+        <select
+          v-model="filterAuthType"
+          class="filter-select"
+        >
+          <option value="">Усі типи входу</option>
+          <option value="password_2fa">Пароль + 2FA</option>
+          <option value="sso_link">SSO — вхід за посиланням</option>
+        </select>
+      </div>
     </div>
 
-    <!-- Services List -->
-    <div class="services-grid">
-      <div v-if="store.loading" class="loading-state">
-        <div class="spinner"></div>
-        <p>Завантаження...</p>
-      </div>
+    <!-- Loading State -->
+    <div v-if="store.loading" class="loading-state">
+      <div class="spinner"></div>
+      <p>Завантаження...</p>
+    </div>
 
-      <div v-else-if="filteredServices.length === 0" class="empty-state">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M19 11H5M19 11C20.1046 11 21 11.8954 21 13V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V13C3 11.8954 3.89543 11 5 11M19 11V9C20.1046 9 21 8.10457 21 7V5C21 3.89543 20.1046 3 19 3H5C3.89543 3 3 3.89543 3 5V7C3 8.10457 3.89543 9 5 9V11M19 11H5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <p>Доступи не знайдено</p>
-        <p class="empty-hint">Зверніться до адміністратора для надання доступу</p>
-      </div>
+    <!-- Empty State -->
+    <div v-else-if="filteredServices.length === 0" class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M19 11H5M19 11C20.1046 11 21 11.8954 21 13V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V13C3 11.8954 3.89543 11 5 11M19 11V9C20.1046 9 21 8.10457 21 7V5C21 3.89543 20.1046 3 19 3H5C3.89543 3 3 3.89543 3 5V7C3 8.10457 3.89543 9 5 9V11M19 11H5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <p>Доступи не знайдено</p>
+      <p class="empty-hint">Зверніться до адміністратора для надання доступу</p>
+    </div>
 
-      <div
-        v-else
-        v-for="(service, sIndex) in paginatedServices"
-        :key="service.service_id"
-        class="service-card"
-      >
-        <!-- Service Header -->
-        <div class="service-header">
-          <div class="service-icon" :style="{ backgroundColor: getServiceColor(sIndex) }">
-            <img
-              v-if="service.service_logo_url"
-              :src="service.service_logo_url"
-              :alt="service.service_name"
-              class="service-avatar"
-              @error="(e) => handleAvatarError(e, service)"
-            />
-            <span v-if="!service.service_logo_url || avatarErrors.has(service.service_id)" class="icon-letter">{{ getInitials(service.service_name) }}</span>
-          </div>
-          <div class="service-info">
-            <h3 class="service-name">{{ service.service_name }}</h3>
-            <a
-              v-if="service.service_url"
-              :href="service.service_url"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="service-url"
-            >
-              {{ service.service_url }}
-            </a>
-            <p v-else class="service-url">—</p>
-          </div>
+    <!-- Services Content -->
+    <template v-else>
+      <!-- External Services Section (password_2fa) -->
+      <div v-if="externalServices.length > 0" class="services-section">
+        <div class="section-header">
+          <h2 class="section-title">Зовнішні сервіси</h2>
+          <div class="section-badge">Пароль + 2FA</div>
+          <p class="section-hint">Скопіюйте логін / пароль, натисніть «Увійти» — з'явиться 2FA-код</p>
         </div>
 
-        <!-- Credentials List -->
-        <div class="credentials-list">
+        <div class="services-grid">
           <div
-            v-for="cred in service.credentials"
-            :key="cred.credential_id"
-            class="credential-row"
+            v-for="(service, sIndex) in externalServices"
+            :key="service.service_id"
+            class="service-card"
           >
-            <div class="credential-field">
-              <label class="field-label">Логін</label>
-              <div class="field-value-wrapper">
-                <span class="field-value">{{ cred.login || '—' }}</span>
-                <button class="btn-icon btn-copy" @click="copyToClipboard(cred.login || '')" title="Копіювати">
-                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V4C20 2.89543 19.1046 2 18 2H10C8.89543 2 8 2.89543 8 4ZM16 18V20C16 21.1046 15.1046 22 14 22H4C2.89543 22 2 21.1046 2 20V8C2 6.89543 2.89543 6 4 6H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                </button>
+            <!-- Service Header -->
+            <div class="service-header">
+              <div class="service-icon" :style="{ backgroundColor: getServiceColor(sIndex) }">
+                <img
+                  v-if="service.service_logo_url"
+                  :src="service.service_logo_url"
+                  :alt="service.service_name"
+                  class="service-avatar"
+                  @error="(e) => handleAvatarError(e, service)"
+                />
+                <span v-if="!service.service_logo_url || avatarErrors.has(service.service_id)" class="icon-letter">{{ getInitials(service.service_name) }}</span>
+              </div>
+              <div class="service-info">
+                <h3 class="service-name">{{ service.service_name }}</h3>
+                <a
+                  v-if="service.service_url"
+                  :href="service.service_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="service-url"
+                >
+                  {{ getServiceDomain(service.service_url) }}
+                </a>
               </div>
             </div>
 
-            <div class="credential-field">
-              <label class="field-label">Пароль</label>
-              <div class="field-value-wrapper">
-                <span v-if="passwordVisibility.has(cred.credential_id)" class="field-value password-value">{{ cred.protected_password || '—' }}</span>
-                <span v-else class="field-value password-dots">••••••••••</span>
-                <button class="btn-icon btn-eye" @click="togglePassword(cred.credential_id)" :title="passwordVisibility.has(cred.credential_id) ? 'Сховати' : 'Показати'">
-                  <svg v-if="!passwordVisibility.has(cred.credential_id)" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
-                  </svg>
-                  <svg v-else viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                </button>
-                <button class="btn-icon btn-copy" @click="copyToClipboard(cred.protected_password || '')" title="Копіювати">
+            <!-- Credentials -->
+            <div class="credentials-list">
+              <div
+                v-for="cred in service.credentials"
+                :key="cred.credential_id"
+                class="credential-row"
+              >
+                <!-- Login Field -->
+                <div class="credential-field">
+                  <label class="field-label">Логін</label>
+                  <div class="field-value-wrapper">
+                    <span class="field-value">{{ cred.login || '—' }}</span>
+                    <button class="btn-icon btn-copy" @click="copyToClipboard(cred.login || '')" title="Копіювати">
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V4C20 2.89543 19.1046 2 18 2H10C8.89543 2 8 2.89543 8 4ZM16 18V20C16 21.1046 15.1046 22 14 22H4C2.89543 22 2 21.1046 2 20V8C2 6.89543 2.89543 6 4 6H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Password Field -->
+                <div class="credential-field">
+                  <label class="field-label">Пароль</label>
+                  <div class="field-value-wrapper">
+                    <span v-if="passwordVisibility.has(cred.credential_id)" class="field-value password-value">{{ cred.protected_password || '—' }}</span>
+                    <span v-else class="field-value password-dots">••••••••••</span>
+                    <button class="btn-icon btn-eye" @click="togglePassword(cred.credential_id)" :title="passwordVisibility.has(cred.credential_id) ? 'Сховати' : 'Показати'">
+                      <svg v-if="!passwordVisibility.has(cred.credential_id)" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                      </svg>
+                      <svg v-else viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                    <button class="btn-icon btn-copy" @click="copyToClipboard(cred.protected_password || '')" title="Копіювати">
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V4C20 2.89543 19.1046 2 18 2H10C8.89543 2 8 2.89543 8 4ZM16 18V20C16 21.1046 15.1046 22 14 22H4C2.89543 22 2 21.1046 2 20V8C2 6.89543 2.89543 6 4 6H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 2FA Code Field -->
+                <div class="credential-field totp-field" v-if="cred.totp_secret">
+                  <label class="field-label">
+                    2FA
+                    <span v-if="totpTimers.has(cred.credential_id)" class="totp-timer">{{ totpTimers.get(cred.credential_id) }} с</span>
+                  </label>
+                  <div class="field-value-wrapper totp-wrapper">
+                    <span class="field-value totp-code">{{ getTOTPCode(cred.credential_id) }}</span>
+                    <button class="btn-icon btn-copy" @click="copyTOTPCode(cred.credential_id)" title="Копіювати 2FA-код">
+                      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V4C20 2.89543 19.1046 2 18 2H10C8.89543 2 8 2.89543 8 4ZM16 18V20C16 21.1046 15.1046 22 14 22H4C2.89543 22 2 21.1046 2 20V8C2 6.89543 2.89543 6 4 6H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="credential-field totp-field totp-placeholder">
+                  <label class="field-label">2FA</label>
+                  <div class="field-value-wrapper totp-placeholder-wrapper">
+                    <span class="field-value totp-placeholder-text">Код з'явиться після натискання «Увійти»</span>
+                  </div>
+                </div>
+
+                <!-- Login Button -->
+                <button
+                  class="btn-login"
+                  @click="handleLogin(service, cred)"
+                >
+                  Увійти
                   <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V4C20 2.89543 19.1046 2 18 2H10C8.89543 2 8 2.89543 8 4ZM16 18V20C16 21.1046 15.1046 22 14 22H4C2.89543 22 2 21.1046 2 20V8C2 6.89543 2.89543 6 4 6H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M5 12H19M19 12H13M19 12L15 8M19 12L15 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </button>
               </div>
@@ -131,52 +194,64 @@
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Pagination -->
-    <div v-if="filteredServices.length > 0" class="pagination">
-      <button
-        class="btn-pagination"
-        :disabled="currentPage === 1"
-        @click="currentPage = 1"
-        title="Перша сторінка"
-      >
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M11 17L6 12L11 7M18 17L13 12L18 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <button
-        class="btn-pagination"
-        :disabled="currentPage === 1"
-        @click="currentPage--"
-        title="Попередня сторінка"
-      >
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <span class="pagination-info">{{ paginationStart }}-{{ paginationEnd }} з {{ filteredServices.length }}</span>
-      <button
-        class="btn-pagination"
-        :disabled="currentPage === totalPages"
-        @click="currentPage++"
-        title="Наступна сторінка"
-      >
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <button
-        class="btn-pagination"
-        :disabled="currentPage === totalPages"
-        @click="currentPage = totalPages"
-        title="Остання сторінка"
-      >
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M13 17L18 12L13 7M6 17L11 12L6 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    </div>
+      <!-- Corporate Services Section (sso_link) -->
+      <div v-if="ssoServices.length > 0" class="services-section">
+        <div class="section-header">
+          <h2 class="section-title">Корпоративні сервіси</h2>
+          <div class="section-badge sso">SSO — вхід по кнопці</div>
+          <p class="section-hint">Вхід одним натисканням</p>
+        </div>
+
+        <div class="services-grid">
+          <div
+            v-for="(service, sIndex) in ssoServices"
+            :key="service.service_id"
+            class="service-card sso-card"
+          >
+            <!-- Service Header -->
+            <div class="service-header">
+              <div class="service-icon" :style="{ backgroundColor: getSsoServiceColor(sIndex) }">
+                <img
+                  v-if="service.service_logo_url"
+                  :src="service.service_logo_url"
+                  :alt="service.service_name"
+                  class="service-avatar"
+                  @error="(e) => handleAvatarError(e, service)"
+                />
+                <span v-if="!service.service_logo_url || avatarErrors.has(service.service_id)" class="icon-letter">{{ getInitials(service.service_name) }}</span>
+              </div>
+              <div class="service-info">
+                <h3 class="service-name">{{ service.service_name }}</h3>
+                <a
+                  v-if="service.service_url"
+                  :href="service.service_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="service-url"
+                >
+                  {{ getServiceDomain(service.service_url) }}
+                </a>
+              </div>
+            </div>
+
+            <!-- SSO Info -->
+            <div class="sso-info">
+              <p class="sso-description">Пароль не потрібен: система авторизує вас автоматично.</p>
+              <button
+                class="btn-login"
+                @click="handleSsoLogin(service)"
+              >
+                Увійти
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M5 12H19M19 12H13M19 12L15 8M19 12L15 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
 
     <!-- Toast notification -->
     <div v-if="toastMessage" class="toast">
@@ -186,71 +261,151 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMyAccessStore } from '@/stores/myAccess'
+import { useAuthStore } from '@/stores/auth'
 
-const router = useRouter()
 const store = useMyAccessStore()
+const authStore = useAuthStore()
 const filterService = ref<number | ''>('')
+const filterAuthType = ref<'password_2fa' | 'sso_link' | ''>('')
 const passwordVisibility = ref(new Set<number>())
 const avatarErrors = ref(new Set<number>())
 const toastMessage = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
+// TOTP state
+const totpCodes = ref<Record<number, string>>({})
+const totpTimers = ref<Map<number, number>>(new Map())
+let totpInterval: ReturnType<typeof setInterval> | null = null
+
+// Session timer
+const sessionRemaining = ref('12 год 0 хв')
+
+// TOTP via Web Crypto API
+async function generateTOTP(secret: string): Promise<string> {
+  try {
+    // Decode base32 secret to bytes
+    let cleanSecret = secret.replace(/\s+/g, '').toUpperCase()
+    // Pad short secrets (e.g., from Notion: 16 chars = 80 bits) to 24 chars (120 bits) for Web Crypto
+    if (cleanSecret.length < 24) {
+      cleanSecret = cleanSecret.padEnd(24, 'A')
+    }
+    const key = urlBase32ToUint8Array(cleanSecret)
+
+    // Get current time step (30 second period)
+    const now = Math.floor(Date.now() / 1000)
+    const timeStep = Math.floor(now / 30)
+    const timeHex = BigInt(timeStep).toString(16).padStart(16, '0')
+    const timeBytes = new Uint8Array(8)
+    for (let i = 0; i < 8; i++) {
+      timeBytes[i] = parseInt(timeHex.substr(i * 2, 2), 16)
+    }
+
+    // Import key and sign
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      key.buffer as ArrayBuffer,
+      { name: 'HMAC', hash: 'SHA-1' },
+      false,
+      ['sign']
+    )
+    const sig = await crypto.subtle.sign('HMAC', cryptoKey, timeBytes)
+    const hmac = new Uint8Array(sig)
+
+    // Dynamic truncation
+    const offset = hmac[hmac.length - 1]! & 0x0f
+    const b0 = hmac[offset] ?? 0
+    const b1 = hmac[offset + 1] ?? 0
+    const b2 = hmac[offset + 2] ?? 0
+    const b3 = hmac[offset + 3] ?? 0
+    const code = ((b0 & 0x7f) << 24 | (b1 & 0xff) << 16 | (b2 & 0xff) << 8 | (b3 & 0xff)) % 1000000
+
+    return String(code).padStart(6, '0')
+  } catch (e) {
+    console.error('TOTP generation failed:', e)
+    return '000000'
+  }
+}
+
+function urlBase32ToUint8Array(base32: string): Uint8Array {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+  const buffer: number[] = []
+  let bits = 0
+  let value = 0
+
+  for (let i = 0; i < base32.length; i++) {
+    const char = base32[i]
+    if (!char) continue
+    const idx = alphabet.indexOf(char)
+    if (idx === -1) continue
+    value = (value << 5) | idx
+    bits += 5
+    if (bits >= 8) {
+      bits -= 8
+      buffer.push((value >> bits) & 0xff)
+    }
+  }
+
+  return new Uint8Array(buffer)
+}
+
+// Filtered services
 const filteredServices = computed(() => {
   let result = store.filteredServices
   if (filterService.value !== '') {
     result = result.filter(s => s.service_id === filterService.value)
   }
+  if (filterAuthType.value !== '') {
+    result = result.filter(s => s.auth_type === filterAuthType.value)
+  }
   return result
 })
 
-const currentPage = ref(1)
-const pageSize = 10
-
-const totalPages = computed(() => Math.ceil(filteredServices.value.length / pageSize))
-
-const paginatedServices = computed(() => {
-  const start = (currentPage.value - 1) * pageSize
-  return filteredServices.value.slice(start, start + pageSize)
+// Split by auth type
+const externalServices = computed(() => {
+  return filteredServices.value.filter(s => s.auth_type === 'password_2fa')
 })
 
-const paginationStart = computed(() => {
-  if (filteredServices.value.length === 0) return 0
-  return (currentPage.value - 1) * pageSize + 1
-})
-
-const paginationEnd = computed(() => {
-  const end = currentPage.value * pageSize
-  return end > filteredServices.value.length ? filteredServices.value.length : end
-})
-
-watch(filteredServices, () => {
-  currentPage.value = 1
+const ssoServices = computed(() => {
+  return filteredServices.value.filter(s => s.auth_type === 'sso_link')
 })
 
 const serviceColors = [
-  '#5865F2', '#EA4335', '#0052CC', '#333', '#FF6600',
+  '#EA4335', '#333', '#5865F2', '#0052CC', '#FF6600',
   '#0078D4', '#4285F4', '#1DA1F2', '#000', '#7B68EE'
 ]
 
+const ssoServiceColors = [
+  '#059669', '#7C3AED', '#2563EB', '#DC2626', '#D97706'
+]
+
 function getServiceColor(index: number): string {
-  return serviceColors[index % serviceColors.length] || '#5865F2'
+  return serviceColors[index % serviceColors.length] || '#EA4335'
+}
+
+function getSsoServiceColor(index: number): string {
+  return ssoServiceColors[index % ssoServiceColors.length] || '#059669'
 }
 
 function getInitials(name: string | undefined): string {
   return (name || '?').charAt(0).toUpperCase()
 }
 
+function getServiceDomain(url: string | null | undefined): string {
+  if (!url) return '—'
+  try {
+    const parsed = new URL(url)
+    return parsed.hostname.replace('www.', '')
+  } catch {
+    return url
+  }
+}
+
 function handleAvatarError(event: Event, service: any) {
   avatarErrors.value.add(service.service_id)
   const img = event.target as HTMLImageElement
   img.style.display = 'none'
-}
-
-function navigateToDetail(service: any) {
-  router.push(`/service/${service.service_id}`)
 }
 
 function togglePassword(credentialId: number) {
@@ -263,11 +418,51 @@ function togglePassword(credentialId: number) {
   passwordVisibility.value = visible
 }
 
+// TOTP functions
+function getTOTPCode(credentialId: number): string {
+  const code = totpCodes.value[credentialId]
+  if (!code) return '—— ———'
+  // Format as "482 910"
+  return code.replace(/(\d{3})(\d{3})/, '$1 $2')
+}
+
+async function updateTOTPCodes() {
+  const updatedCodes: Record<number, string> = {}
+  const updatedTimers = new Map<number, number>()
+  const now = Math.floor(Date.now() / 1000)
+  const timeRemaining = 30 - (now % 30)
+
+  for (const service of externalServices.value) {
+    for (const cred of service.credentials) {
+      if (cred.totp_secret) {
+        try {
+          updatedCodes[cred.credential_id] = await generateTOTP(cred.totp_secret)
+        } catch {
+          updatedCodes[cred.credential_id] = '000000'
+        }
+        updatedTimers.set(cred.credential_id, timeRemaining)
+      }
+    }
+  }
+
+  totpCodes.value = updatedCodes
+  totpTimers.value = updatedTimers
+}
+
 function copyToClipboard(text: string) {
   if (!text) return
   navigator.clipboard.writeText(text).then(() => {
     showToast('Скопійовано в буфер обміну')
   })
+}
+
+function copyTOTPCode(credentialId: number) {
+  const code = totpCodes.value[credentialId]
+  if (code) {
+    navigator.clipboard.writeText(code).then(() => {
+      showToast('2FA-код скопійовано')
+    })
+  }
 }
 
 function showToast(message: string) {
@@ -278,8 +473,78 @@ function showToast(message: string) {
   }, 2000)
 }
 
+async function handleLogin(service: any, cred: any) {
+  // If there's a TOTP secret, generate the code on login
+  if (cred.totp_secret) {
+    try {
+      const code = await generateTOTP(cred.totp_secret)
+      totpCodes.value[cred.credential_id] = code
+      const now = Math.floor(Date.now() / 1000)
+      totpTimers.value.set(cred.credential_id, 30 - (now % 30))
+    } catch (e) {
+      console.error('TOTP generation failed:', e)
+    }
+  }
+
+  // Open the service URL in a new tab
+  if (service.service_url) {
+    window.open(service.service_url, '_blank', 'noopener,noreferrer')
+  }
+}
+
+async function handleSsoLogin(service: any) {
+  try {
+    const token = authStore.token
+    if (!token) return
+
+    // Get the first credential ID for this service
+    const credId = service.credentials[0]?.credential_id
+    if (!credId) {
+      // Fallback: open service URL directly
+      if (service.service_url) {
+        window.open(service.service_url, '_blank', 'noopener,noreferrer')
+      }
+      return
+    }
+
+    const response = await fetch(`/api/services/credentials/${credId}/access-data`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      if (data.strategy === 'sso_link' && data.redirect_url) {
+        window.open(data.redirect_url, '_blank', 'noopener,noreferrer')
+      } else if (data.url) {
+        window.open(data.url, '_blank', 'noopener,noreferrer')
+      }
+    }
+  } catch (e) {
+    console.error('SSO login failed:', e)
+    // Fallback: open service URL
+    if (service.service_url) {
+      window.open(service.service_url, '_blank', 'noopener,noreferrer')
+    }
+  }
+}
+
 onMounted(() => {
   store.fetchMyAccess()
+  // Update TOTP codes every second
+  totpInterval = setInterval(updateTOTPCodes, 1000)
+  updateTOTPCodes()
+})
+
+onUnmounted(() => {
+  if (totpInterval) clearInterval(totpInterval)
+  if (toastTimer) clearTimeout(toastTimer)
+})
+
+// Reset TOTP codes when filters change
+watch([filteredServices], () => {
+  updateTOTPCodes()
 })
 </script>
 
@@ -287,11 +552,17 @@ onMounted(() => {
 .my-access-page {
   width: 100%;
   padding-bottom: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 /* Page Header */
 .page-header {
-  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
 }
 
 .page-title {
@@ -307,12 +578,29 @@ onMounted(() => {
   margin: 0;
 }
 
+.session-info {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.session-info svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* Filter Block */
 .filter-block {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-bottom: 1.5rem;
   flex-wrap: wrap;
 }
 
@@ -346,9 +634,9 @@ onMounted(() => {
 }
 
 .filter-input:focus {
-  border-color: #5865F2;
+  border-color: #059669;
   background: white;
-  box-shadow: 0 0 0 3px rgba(88, 101, 242, 0.1);
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
 .filter-select-wrapper {
@@ -367,32 +655,67 @@ onMounted(() => {
   outline: none;
   transition: all 0.2s;
   min-width: 160px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
 }
 
 .filter-select:focus {
-  border-color: #5865F2;
-  background: white;
-  box-shadow: 0 0 0 3px rgba(88, 101, 242, 0.1);
+  border-color: #059669;
+  background-color: white;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
 }
 
-.filter-select-wrapper::after {
-  content: '';
-  position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 0;
-  height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 5px solid #64748b;
-  pointer-events: none;
+/* Services Section */
+.services-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.section-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.section-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  background: #ecfdf5;
+  color: #059669;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.section-badge.sso {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.section-hint {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin: 0;
+  margin-left: auto;
 }
 
 /* Services Grid */
 .services-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 1.25rem;
 }
 
@@ -404,6 +727,8 @@ onMounted(() => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   overflow: hidden;
   transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
 }
 
 .service-card:hover {
@@ -482,7 +807,7 @@ onMounted(() => {
   padding: 1rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 0.875rem;
+  gap: 0.75rem;
 }
 
 .credential-row {
@@ -503,6 +828,20 @@ onMounted(() => {
   color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.totp-timer {
+  background: #fef3c7;
+  color: #d97706;
+  padding: 0.125rem 0.375rem;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .field-value-wrapper {
@@ -527,6 +866,84 @@ onMounted(() => {
 
 .password-dots {
   letter-spacing: 0.1em;
+}
+
+/* TOTP Field */
+.totp-field {
+  /* default styles */
+}
+
+.totp-wrapper {
+  background: #faf5ff;
+  border-color: #e9d5ff;
+}
+
+.totp-code {
+  font-size: 1rem !important;
+  font-weight: 700;
+  color: #7c3aed;
+  letter-spacing: 0.05em;
+}
+
+.totp-placeholder {
+  /* placeholder styles */
+}
+
+.totp-placeholder-wrapper {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  border-style: dashed;
+}
+
+.totp-placeholder-text {
+  font-size: 0.75rem !important;
+  color: #94a3b8;
+  font-family: inherit !important;
+  font-style: italic;
+}
+
+/* Login Button */
+.btn-login {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: #059669;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 0.25rem;
+}
+
+.btn-login:hover {
+  background: #047857;
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+}
+
+.btn-login svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* SSO Card */
+.sso-card .sso-info {
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sso-description {
+  font-size: 0.8125rem;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.5;
 }
 
 /* Icon Buttons */
@@ -555,44 +972,9 @@ onMounted(() => {
   height: 16px;
 }
 
-/* Service Footer */
-.service-footer {
-  padding: 0.75rem 1.25rem;
-  border-top: 1px solid #f1f5f9;
-}
-
-.btn-view-service {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.75rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-view-service:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-  border-color: #cbd5e1;
-}
-
-.btn-view-service svg {
-  width: 16px;
-  height: 16px;
-}
-
 /* Loading & Empty States */
 .loading-state,
 .empty-state {
-  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -605,7 +987,7 @@ onMounted(() => {
   width: 2.5rem;
   height: 2.5rem;
   border: 3px solid #e2e8f0;
-  border-top-color: #5865F2;
+  border-top-color: #059669;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-bottom: 1rem;
@@ -661,52 +1043,6 @@ onMounted(() => {
   }
 }
 
-/* Pagination */
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 1.5rem 0 1rem;
-}
-
-.btn-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-pagination:hover:not(:disabled) {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-
-.btn-pagination:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn-pagination svg {
-  width: 18px;
-  height: 18px;
-}
-
-.pagination-info {
-  font-size: 0.875rem;
-  color: #64748b;
-  padding: 0 0.75rem;
-  font-weight: 500;
-}
-
 /* Responsive */
 @media (max-width: 768px) {
   .services-grid {
@@ -724,6 +1060,20 @@ onMounted(() => {
 
   .filter-select {
     width: 100%;
+  }
+
+  .page-header {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .section-hint {
+    margin-left: 0;
   }
 }
 </style>
