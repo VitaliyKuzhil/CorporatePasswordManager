@@ -188,13 +188,13 @@
 
         <form @submit.prevent="saveService" class="dialog-form">
           <div class="form-group">
-            <label for="service-name">Назва джерела *</label>
+            <label for="service-name">Назва джерела <span class="required-star">*</span></label>
             <input
               id="service-name"
               v-model="formData.service_name"
               type="text"
               required
-              placeholder="Наприклад: Gmail"
+              placeholder="Наприклад: Корпоративний Gmail"
             />
           </div>
 
@@ -209,13 +209,52 @@
           </div>
 
           <div class="form-group">
+            <label>Тип входу</label>
+            <select
+              v-model="formData.auth_type"
+              class="form-select"
+            >
+              <option value="password_2fa">Пароль + 2FA</option>
+              <option value="sso_link">SSO — вхід за посиланням</option>
+            </select>
+          </div>
+
+          <div class="auth-type-info">
+            <div class="auth-type-card" :class="{ active: formData.auth_type === 'password_2fa' }" @click="formData.auth_type = 'password_2fa'">
+              <div class="auth-type-card-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 15V17M12 11H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="auth-type-card-text">
+                <span class="auth-type-card-title">Пароль + 2FA</span>
+                <span class="auth-type-card-desc">Для сторонніх сервісів (Gmail, GitHub, Trello). Працівник бачить логін і пароль, а 6-значний код з'явиться, коли він напише код.</span>
+              </div>
+            </div>
+
+            <div class="auth-type-card" :class="{ active: formData.auth_type === 'sso_link' }" @click="formData.auth_type = 'sso_link'">
+              <div class="auth-type-card-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M13.828 10.172a4 4 0 0 0-5.656 0L9 10.828M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </div>
+              <div class="auth-type-card-text">
+                <span class="auth-type-card-title">SSO — вхід за посиланням</span>
+                <span class="auth-type-card-desc">Для ваших власних систем. Працівник просто натискає кнопку, пароль не потрібен.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
             <label for="service-logo">URL логотипу</label>
             <input
               id="service-logo"
               v-model="formData.service_logo_url"
               type="url"
-              placeholder="https://example.com/logo.png"
+              placeholder="https://cdn.jsdelivr.net/gh/github-labs/dashboard-icons/png/gmail.png"
             />
+            <span class="form-hint">Пряме посилання на зображення логотипу. Підтримка PNG, JPG, SVG.</span>
           </div>
 
           <div class="dialog-actions">
@@ -286,6 +325,7 @@ const formData = ref({
   service_name: '',
   service_url: '',
   service_logo_url: '',
+  auth_type: 'password_2fa' as 'password_2fa' | 'sso_link',
 })
 
 function getInitials(name: string) {
@@ -345,16 +385,17 @@ function resetFilters() {
 
 function openAddDialog() {
   editingService.value = null
-  formData.value = { service_name: '', service_url: '', service_logo_url: '' }
+  formData.value = { service_name: '', service_url: '', service_logo_url: '', auth_type: 'password_2fa' }
   showDialog.value = true
 }
 
-function openEditDialog(service: { service_id: number; service_name: string; service_url: string | null; service_logo_url: string | null }) {
+function openEditDialog(service: { service_id: number; service_name: string; service_url: string | null; service_logo_url: string | null; auth_type?: 'password_2fa' | 'sso_link' }) {
   editingService.value = service
   formData.value = {
     service_name: service.service_name,
     service_url: service.service_url || '',
     service_logo_url: service.service_logo_url || '',
+    auth_type: service.auth_type || 'password_2fa',
   }
   showDialog.value = true
 }
@@ -922,6 +963,111 @@ onMounted(async () => {
 .form-group input:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-select {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.2s;
+  background-color: white;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.25rem;
+}
+
+.form-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.required-star {
+  color: #ef4444;
+}
+
+.form-hint {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.25rem;
+}
+
+.auth-type-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: #f8fafc;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+}
+
+.auth-type-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  background: white;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.auth-type-card:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.auth-type-card.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.auth-type-card-icon {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  transition: color 0.2s;
+}
+
+.auth-type-card.active .auth-type-card-icon {
+  color: #3b82f6;
+}
+
+.auth-type-card-icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.auth-type-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.auth-type-card-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.auth-type-card.active .auth-type-card-title {
+  color: #1d4ed8;
+}
+
+.auth-type-card-desc {
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.4;
 }
 
 .dialog-actions {

@@ -8,18 +8,21 @@ interface Service {
   service_url: string | null
   service_logo_url: string | null
   credential_count: number
+  auth_type: 'password_2fa' | 'sso_link'
 }
 
 interface ServiceCreateData {
   service_name: string
   service_url?: string
   service_logo_url?: string
+  auth_type?: 'password_2fa' | 'sso_link'
 }
 
 interface ServiceUpdateData {
   service_name?: string
   service_url?: string
   service_logo_url?: string
+  auth_type?: 'password_2fa' | 'sso_link'
 }
 
 export const useServicesStore = defineStore('services', () => {

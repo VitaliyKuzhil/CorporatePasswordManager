@@ -1,8 +1,15 @@
+import enum
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Text, Boolean, ForeignKey, DateTime, func
+from sqlalchemy import String, Text, Boolean, ForeignKey, DateTime, Enum, func
 from sqlalchemy.orm import Mapped, mapped_column
 from src.database import Base
+
+
+class AuthStrategyType(str, enum.Enum):
+    """Тип стратегії автентифікації для сервісу."""
+    PASSWORD_2FA = "password_2fa"  # Логін + Пароль + 6-значний TOTP код
+    SSO_LINK = "sso_link"          # Прямий перехід за одноразовим JWT-токеном
 
 class User(Base):
     __tablename__ = "users"
@@ -24,6 +31,12 @@ class Service(Base):
     service_name: Mapped[Optional[str]] = mapped_column(String(100))
     service_url: Mapped[Optional[str]] = mapped_column(String(255), comment="Посилання для швидкого переходу на сайт")
     service_logo_url: Mapped[Optional[str]] = mapped_column(String(255))
+    auth_type: Mapped[AuthStrategyType] = mapped_column(
+        Enum(AuthStrategyType, values_callable=lambda x: [e.value for e in x]),
+        default=AuthStrategyType.PASSWORD_2FA,
+        nullable=False,
+        comment="Тип автентифікації: password_2fa або sso_link"
+    )
 
 class Credential(Base):
     __tablename__ = "credentials"
@@ -32,6 +45,7 @@ class Credential(Base):
     service_id: Mapped[int] = mapped_column(ForeignKey("services.service_id", ondelete="CASCADE"))
     login: Mapped[Optional[str]] = mapped_column(String(100))
     protected_password: Mapped[Optional[str]] = mapped_column(String(255), comment="AES-зашифрований пароль")
+    totp_secret: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="Base32 секрет TOTP (наприклад, JBSWY3DPEHPK3PXP)")
     comment: Mapped[Optional[str]] = mapped_column(Text)
 
 class UserCredentialAccess(Base):

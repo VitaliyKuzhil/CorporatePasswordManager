@@ -61,5 +61,13 @@ services:
     depends_on:
       - backend
 
+  company_crm:
+    build:
+      context: .
+      dockerfile: ./company_crm/Dockerfile
+    container_name: pm_company_crm
+    ports:
+      - "${COMPANY_CRM_PORT:-8001}:8001"
+
 volumes:
   db_data:
