@@ -5,9 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.dependencies import get_current_user, get_current_admin
 from src.database import get_db
-from src.security import encrypt_password
-from src.models import User, UserCredentialAccess, Service, Credential
-from src.users.schemas import UserResponse, UserCreate, UserUpdateStatus, UpdateEmployee, EmployeeCredentialsResponse, GrantEmployeeCredentialRequest, GrantAllCredentialsRequest
+from src.security import decrypt_password, encrypt_password
+from src.models import AuditLog, User, UserCredentialAccess, Service, Credential
+from src.users.schemas import UserResponse, UserCreate, UserUpdateStatus, UpdateEmployee, EmployeeCredentialsResponse, EmployeeLoginPasswordResponse, GrantEmployeeCredentialRequest, GrantAllCredentialsRequest
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -115,10 +115,12 @@ async def update_employee(
         if existing.scalars().first():
             raise HTTPException(status_code=400, detail="Користувач з таким логіном вже існує")
         user.login = update_data.login
+        user.auth_version += 1
 
     # Зміна пароля, якщо надано
     if update_data.password is not None:
         user.protected_password = encrypt_password(update_data.password)
+        user.auth_version += 1
 
     # Оновлення ПІБ
     if update_data.full_name is not None:
@@ -149,8 +151,14 @@ async def update_user_status(
     user = user.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="Користувача не знайдено")
+
+    if user.role == "admin" and user.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Змінювати статус іншого адміністратора заборонено")
+    if user.user_id == current_user.user_id and status_data.status == "blocked":
+        raise HTTPException(status_code=400, detail="Неможливо заблокувати власний обліковий запис")
     
     user.status = status_data.status
+    user.auth_version += 1
     await db.commit()
     return {"ok": True, "status": user.status}
 
@@ -236,11 +244,38 @@ async def get_user_credentials(
             service_url=service.service_url,
             service_logo_url=service.service_logo_url,
             login=cred.login or '',
-            protected_password=cred.protected_password or '',
+            password=decrypt_password(cred.protected_password) if cred.protected_password else '',
             comment=cred.comment,
         ))
     
     return credentials_list
+
+
+@router.get("/{user_id}/login-password", response_model=EmployeeLoginPasswordResponse)
+async def get_employee_login_password(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+):
+    user_result = await db.execute(select(User).where(User.user_id == user_id))
+    user = user_result.scalars().one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Користувача не знайдено")
+    if not user.login or not user.protected_password:
+        raise HTTPException(status_code=404, detail="Пароль користувача не налаштовано")
+    try:
+        password = decrypt_password(user.protected_password)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Не вдалося розшифрувати пароль користувача") from None
+
+    db.add(AuditLog(
+        actor_user_id=current_user.user_id,
+        action="user.login_password.accessed",
+        resource_type="user",
+        resource_id=user.user_id,
+    ))
+    await db.commit()
+    return EmployeeLoginPasswordResponse(login=user.login, password=password)
 
 
 @router.post("/{user_id}/credentials", status_code=status.HTTP_201_CREATED)
@@ -257,29 +292,33 @@ async def grant_employee_credential(
     if not user:
         raise HTTPException(status_code=404, detail="Користувача не знайдено")
     
-    # Перевіряємо, що сервіс існує
-    service_result = await db.execute(select(Service).where(Service.service_id == cred_data.service_id))
-    service = service_result.scalars().one_or_none()
-    if not service:
-        raise HTTPException(status_code=404, detail="Джерело не знайдено")
-    
-    # Створюємо новий креденшал
-    credential = Credential(
-        service_id=cred_data.service_id,
-        login=cred_data.login,
-        protected_password=cred_data.password,  # TODO: шифрувати
-        comment=cred_data.comment,
+    credential_result = await db.execute(
+        select(Credential).where(Credential.credential_id == cred_data.credential_id)
     )
-    db.add(credential)
-    await db.flush()
-    
-    # Надаємо доступ користувачу
-    access = UserCredentialAccess(
-        user_id=user_id,
-        credential_id=credential.credential_id,
-        is_active=True,
+    credential = credential_result.scalars().one_or_none()
+    if not credential:
+        raise HTTPException(status_code=404, detail="Креденшал не знайдено")
+
+    existing_result = await db.execute(
+        select(UserCredentialAccess).where(
+            UserCredentialAccess.user_id == user_id,
+            UserCredentialAccess.credential_id == credential.credential_id,
+        )
     )
-    db.add(access)
+    access = existing_result.scalars().one_or_none()
+    if access and access.is_active:
+        raise HTTPException(status_code=400, detail="Доступ вже надано")
+    if access:
+        access.is_active = True
+        access.revoked_at = None
+        access.granted_by = current_user.user_id
+    else:
+        db.add(UserCredentialAccess(
+            user_id=user_id,
+            credential_id=credential.credential_id,
+            is_active=True,
+            granted_by=current_user.user_id,
+        ))
     await db.commit()
     
     return {"message": "Доступ надано"}
@@ -306,6 +345,7 @@ async def revoke_employee_credential(
         raise HTTPException(status_code=404, detail="Доступ не знайдено")
     
     access.is_active = False
+    access.revoked_at = func.now()
     await db.commit()
 
 
@@ -346,19 +386,22 @@ async def grant_all_credentials_to_user(
             select(UserCredentialAccess).where(
                 UserCredentialAccess.user_id == user_id,
                 UserCredentialAccess.credential_id == access.credential_id,
-                UserCredentialAccess.is_active == True
             )
         )
-        if existing_access.scalars().one_or_none():
+        target_access = existing_access.scalars().one_or_none()
+        if target_access and target_access.is_active:
             continue
-        
-        # Надаємо доступ
-        new_access = UserCredentialAccess(
-            user_id=user_id,
-            credential_id=access.credential_id,
-            is_active=True,
-        )
-        db.add(new_access)
+        if target_access:
+            target_access.is_active = True
+            target_access.revoked_at = None
+            target_access.granted_by = current_user.user_id
+        else:
+            db.add(UserCredentialAccess(
+                user_id=user_id,
+                credential_id=access.credential_id,
+                is_active=True,
+                granted_by=current_user.user_id,
+            ))
         granted_count += 1
     
     if granted_count > 0:
@@ -381,6 +424,9 @@ async def delete_user(
     user = user.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="Користувача не знайдено")
+
+    if user.role == "admin":
+        raise HTTPException(status_code=403, detail="Видалення іншого адміністратора заборонено")
     
     await db.delete(user)
     await db.commit()

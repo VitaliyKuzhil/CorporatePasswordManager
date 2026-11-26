@@ -21,7 +21,7 @@ const router = createRouter({
       path: '/services',
       name: 'services',
       component: HomeView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
       path: '/login',
@@ -39,19 +39,19 @@ const router = createRouter({
       path: '/users',
       name: 'users',
       component: UsersView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
       path: '/service/:id',
       name: 'serviceDetail',
       component: ServiceDetailView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
       path: '/employee/:id',
       name: 'employeeDetail',
       component: EmployeeDetailView,
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, requiresAdmin: true }
     },
   ],
 })
@@ -65,6 +65,11 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     // Якщо маршрут потребує авторизації і користувач не залогінений
     next({ name: 'login' })
+    return
+  }
+
+  if (to.meta.requiresAdmin && authStore.user?.role !== 'admin') {
+    next({ name: 'home' })
     return
   }
 

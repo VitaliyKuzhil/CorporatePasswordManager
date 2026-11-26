@@ -5,8 +5,6 @@ import { useAuthStore } from '@/stores/auth'
 export interface MyAccessCredential {
   credential_id: number
   login: string | null
-  protected_password: string | null
-  totp_secret: string | null
   comment: string | null
 }
 
@@ -35,7 +33,6 @@ export const useMyAccessStore = defineStore('myAccess', () => {
       const urlMatch = service.service_url?.toLowerCase().includes(q) || false
       const credMatch = service.credentials.some((c) =>
         c.login?.toLowerCase().includes(q) ||
-        c.protected_password?.toLowerCase().includes(q) ||
         c.comment?.toLowerCase().includes(q)
       )
       return serviceMatch || urlMatch || credMatch

@@ -20,7 +20,7 @@ interface EmployeeCredential {
   service_url: string | null
   service_logo_url: string | null
   login: string
-  protected_password: string
+  password: string
   comment: string | null
   showPassword?: boolean
 }
@@ -66,7 +66,20 @@ export const useEmployeeDetailStore = defineStore('employeeDetail', () => {
     }
   }
 
-  async function grantCredential(user_id: number, data: { service_id: number; login: string; password: string; comment?: string }) {
+  async function fetchLoginPassword(user_id: number) {
+    if (!authStore.token) return null
+    try {
+      const response = await fetch(`/api/users/${user_id}/login-password`, {
+        headers: { 'Authorization': `Bearer ${authStore.token}` }
+      })
+      if (!response.ok) return null
+      return await response.json() as { login: string; password: string }
+    } catch {
+      return null
+    }
+  }
+
+  async function grantCredential(user_id: number, credential_id: number) {
     if (!authStore.token) return false
     try {
       const response = await fetch(`/api/users/${user_id}/credentials`, {
@@ -75,7 +88,7 @@ export const useEmployeeDetailStore = defineStore('employeeDetail', () => {
           'Authorization': `Bearer ${authStore.token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify({ credential_id })
       })
       if (response.ok) {
         // Оновлюємо список креденшалів
@@ -161,6 +174,7 @@ export const useEmployeeDetailStore = defineStore('employeeDetail', () => {
     loading,
     fetchEmployee,
     fetchCredentials,
+    fetchLoginPassword,
     grantCredential,
     revokeCredential,
     grantAllCredentialsToUser,

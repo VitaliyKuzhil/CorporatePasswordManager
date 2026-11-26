@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy import select
 from starlette.middleware.cors import CORSMiddleware
 
-from src.database import engine, Base, AsyncSessionLocal
+from src.database import engine, AsyncSessionLocal
 from src.models import User
 from src.config import settings
 from src.security import encrypt_password
@@ -19,10 +19,6 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Async create table
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     # Перевірка та створення першого адміна
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(User).where(User.role == "admin"))
@@ -46,7 +42,13 @@ async def lifespan(app: FastAPI):
     # close connect
     await engine.dispose()
 
-app = FastAPI(title="Password Manager API", lifespan=lifespan)
+app = FastAPI(
+    title="Password Manager API",
+    lifespan=lifespan,
+    docs_url="/docs" if settings.debug else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if settings.debug else None,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -59,6 +61,11 @@ app.add_middleware(
 @app.get("/")
 async def read_root():
     return {"message": "API is running."}
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(credentials_router, prefix="/api")

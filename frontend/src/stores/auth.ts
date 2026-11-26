@@ -20,7 +20,7 @@ interface UpdateProfileData {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref<string | null>(localStorage.getItem('token'))
+  const token = ref<string | null>(sessionStorage.getItem('token'))
   const user = ref<UserProfile | null>(null)
   const error = ref<string | null>(null)
   const isAuthenticated = ref<boolean>(false)
@@ -47,7 +47,7 @@ export const useAuthStore = defineStore('auth', () => {
         token.value = null
         user.value = null
         isAuthenticated.value = false
-        localStorage.removeItem('token')
+        sessionStorage.removeItem('token')
       }
     } catch {
       // Помилка підключення, залишаємо токен для повторної спроби
@@ -79,7 +79,7 @@ export const useAuthStore = defineStore('auth', () => {
       const data = await response.json()
       token.value = data.access_token
       isAuthenticated.value = true
-      localStorage.setItem('token', data.access_token)
+      sessionStorage.setItem('token', data.access_token)
 
       // Отримати профіль користувача після успішного входу
       await fetchProfile()
@@ -134,7 +134,7 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     isAuthenticated.value = false
     tokenValidated.value = false
-    localStorage.removeItem('token')
+    sessionStorage.removeItem('token')
   }
 
   return { token, user, isAuthenticated, error, login, logout, fetchProfile, updateProfile, validateToken }

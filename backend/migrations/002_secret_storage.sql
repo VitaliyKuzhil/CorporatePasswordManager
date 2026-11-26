@@ -1,0 +1,1 @@
+-- Superseded by Alembic revision 0002_secure_storage.py; do not apply manually.

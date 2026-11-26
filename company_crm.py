@@ -1,17 +1,39 @@
+import html
+import os
+import threading
+import time
+from urllib.parse import parse_qs
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 import jwt
 
 app = FastAPI(title="Company CRM (Тестовий клієнт)")
 
-# ВАЖЛИВО: Цей ключ має бути ІДЕНТИЧНИМ до SSO_SECRET_KEY у вашому Менеджері паролів!
-SSO_SECRET_KEY = "a9JgyK6sedNPWk2qcFKu9N1fyWnMIXOBktXTTsdTbCw="
+SSO_SECRET_KEY = os.environ["SSO_SECRET_KEY"]
+SSO_AUDIENCE = os.environ.get("SSO_AUDIENCE", "http://localhost:8001/auth/callback")
+used_tokens: dict[str, float] = {}
+used_tokens_lock = threading.Lock()
 
 # 1. Головна сторінка CRM (Перевіряє, чи авторизований працівник)
 @app.get("/", response_class=HTMLResponse)
 async def crm_dashboard(request: Request):
     # Перевіряємо наявність локальної сесії в cookies
-    user_login = request.cookies.get("crm_session_user")
+    session_token = request.cookies.get("crm_session_user")
+    user_login = None
+    if session_token:
+        try:
+            session = jwt.decode(
+                session_token,
+                SSO_SECRET_KEY,
+                algorithms=["HS256"],
+                audience="company-crm-session",
+                issuer="company-crm",
+                options={"require": ["exp", "aud", "iss", "sub"]},
+            )
+            user_login = session.get("sub")
+        except jwt.InvalidTokenError:
+            user_login = None
 
     if not user_login:
         # Якщо сесії немає — показуємо заглушку (звичайний вхід за паролем вимкнено!)
@@ -30,7 +52,7 @@ async def crm_dashboard(request: Request):
     <html>
         <body style="font-family: sans-serif; text-align: center; margin-top: 100px;">
             <h1 style="color: #28a745;">✅ Ви успішно увійшли в Company CRM!</h1>
-            <p>Авторизований користувач: <b>{user_login}</b></p>
+            <p>Авторизований користувач: <b>{html.escape(user_login or '')}</b></p>
             <p>Вхід виконано без пароля за допомогою одноразового SSO-токена.</p>
             <br>
             <a href="/logout" style="padding: 10px 20px; background: #dc3545; color: white; text-decoration: none; border-radius: 5px;">
@@ -41,29 +63,56 @@ async def crm_dashboard(request: Request):
     """
 
 # 2. Ендпоінт прийому перепустки (Callback) від Менеджера паролів
-@app.get("/auth/callback")
-async def sso_callback(sso_token: str = None):
+@app.post("/auth/callback")
+async def sso_callback(request: Request):
+    form = parse_qs((await request.body()).decode("utf-8"))
+    sso_token = form.get("sso_token", [None])[0]
     if not sso_token:
         raise HTTPException(status_code=400, detail="Відсутній SSO токен")
 
     try:
-        # Розшифровуємо та перевіряємо підпис і час життя токена (ті самі 30 секунд)
-        payload = jwt.decode(sso_token, SSO_SECRET_KEY, algorithms=["HS256"])
+        payload = jwt.decode(
+            sso_token,
+            SSO_SECRET_KEY,
+            algorithms=["HS256"],
+            audience=SSO_AUDIENCE,
+            issuer="corporate-password-manager",
+            options={"require": ["exp", "aud", "iss", "sub", "jti"]},
+        )
+        jti = payload["jti"]
+        now = time.time()
+        with used_tokens_lock:
+            for token_id, expires in list(used_tokens.items()):
+                if expires <= now:
+                    del used_tokens[token_id]
+            if jti in used_tokens:
+                raise HTTPException(status_code=403, detail="SSO токен уже використано")
+            used_tokens[jti] = float(payload["exp"])
 
-        # Перевіряємо, що токен видав саме наш Менеджер паролів
-        if payload.get("iss") != "corporate-password-manager":
-            raise HTTPException(status_code=403, detail="Невідоме джерело токена")
-
-        user_login = payload.get("sub")
-
-        # Токен валідний! Перенаправляємо на головну сторінку CRM і ставимо куку сесії
-        response = RedirectResponse(url="/")
-        response.set_cookie(key="crm_session_user", value=user_login, httponly=True)
+        session_token = jwt.encode(
+            {
+                "sub": payload["sub"],
+                "iss": "company-crm",
+                "aud": "company-crm-session",
+                "exp": int(now + 8 * 60 * 60),
+            },
+            SSO_SECRET_KEY,
+            algorithm="HS256",
+        )
+        response = RedirectResponse(url="/", status_code=303)
+        response.set_cookie(
+            key="crm_session_user",
+            value=session_token,
+            httponly=True,
+            secure=os.environ.get("COOKIE_SECURE", "false").lower() == "true",
+            samesite="lax",
+            max_age=8 * 60 * 60,
+        )
         return response
 
     except jwt.ExpiredSignatureError:
         return HTMLResponse(
-            "<h1>⏳ Час дії токена вичерпано (30 сек). Спробуйте увійти знову.</h1>",
+            "<h1>⏳ Час дії токена вичерпано. Спробуйте увійти знову.</h1>",
             status_code=401
         )
     except jwt.InvalidTokenError:

@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel
 
 class UserResponse(BaseModel):
@@ -20,12 +21,12 @@ class UserCreate(BaseModel):
     password: str
     phone: str | None = None
     avatar_url: str | None = None
-    role: str = "user"
-    status: str = "active"
+    role: Literal["admin", "user"] = "user"
+    status: Literal["active", "blocked"] = "active"
 
 
 class UserUpdateStatus(BaseModel):
-    status: str
+    status: Literal["active", "blocked"]
 
 
 class UpdateEmployee(BaseModel):
@@ -48,19 +49,21 @@ class EmployeeCredentialsResponse(BaseModel):
     service_url: str | None = None
     service_logo_url: str | None = None
     login: str
-    protected_password: str
+    password: str
     comment: str | None = None
 
     class Config:
         from_attributes = True
 
 
-class GrantEmployeeCredentialRequest(BaseModel):
-    """Запит на надання доступу до сервісу працівнику."""
-    service_id: int
+class EmployeeLoginPasswordResponse(BaseModel):
     login: str
     password: str
-    comment: str | None = None
+
+
+class GrantEmployeeCredentialRequest(BaseModel):
+    """Запит на надання доступу до сервісу працівнику."""
+    credential_id: int
 
 
 class GrantAllCredentialsRequest(BaseModel):

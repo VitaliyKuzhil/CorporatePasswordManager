@@ -1,25 +1,28 @@
-version: '3.8'
-
 services:
   db:
     image: mysql:8.4
     container_name: pm_mysql
-    env_file:
-      - .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?MYSQL_DATABASE is required}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER is required}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
     ports:
-      - "${DB_PORT:-3307}:3306"
+      - "127.0.0.1:${DB_PORT:-3307}:3306"
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "mysql --protocol=TCP --host=127.0.0.1 --user=root --password=$$MYSQL_ROOT_PASSWORD --database=$$MYSQL_DATABASE --silent --execute='SELECT 1'"]
+      start_period: 30s
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 10
 
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin
+    image: phpmyadmin:5.2.2-apache
     container_name: pm_phpmyadmin
     ports:
-      - "${PHPMYADMIN_PORT:-8081}:80"
+      - "127.0.0.1:${PHPMYADMIN_PORT:-8081}:80"
     environment:
       PMA_HOST: db
     depends_on:
@@ -33,15 +36,33 @@ services:
     container_name: pm_backend
     restart: always
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
-    env_file:
-      - .env
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    environment:
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?MYSQL_DATABASE is required}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER is required}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      ENCRYPTION_KEYS: ${ENCRYPTION_KEYS:-}
+      SSO_SECRET_KEY: ${SSO_SECRET_KEY:?SSO_SECRET_KEY is required}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      DEBUG: ${DEBUG:-false}
+      DEFAULT_ADMIN_LOGIN: ${DEFAULT_ADMIN_LOGIN:?DEFAULT_ADMIN_LOGIN is required}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?DEFAULT_ADMIN_PASSWORD is required}
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     volumes:
       - ./backend/src:/app/src
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "alembic upgrade head && exec uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build:
@@ -53,13 +74,16 @@ services:
       - /app/node_modules
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
-    env_file:
-      - .env
     environment:
-      - FRONTEND_PORT=${FRONTEND_PORT}
-      - BACKEND_PORT=${BACKEND_PORT}
+      FRONTEND_PORT: ${FRONTEND_PORT:-5173}
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   company_crm:
     build:
@@ -67,7 +91,11 @@ services:
       dockerfile: ./company_crm/Dockerfile
     container_name: pm_company_crm
     ports:
-      - "${COMPANY_CRM_PORT:-8001}:8001"
+      - "127.0.0.1:${COMPANY_CRM_PORT:-8001}:8001"
+    environment:
+      SSO_SECRET_KEY: ${SSO_SECRET_KEY:?SSO_SECRET_KEY is required}
+      SSO_AUDIENCE: ${SSO_AUDIENCE:-http://localhost:${COMPANY_CRM_PORT:-8001}/auth/callback}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
 
 volumes:
   db_data:

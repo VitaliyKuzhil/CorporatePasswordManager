@@ -34,7 +34,8 @@ class ServiceResponse(ServiceBase):
 class CredentialWithAccess(BaseModel):
     credential_id: int
     login: Optional[str] = None
-    protected_password: Optional[str] = None
+    password: Optional[str] = None
+    totp_secret: Optional[str] = None
     comment: Optional[str] = None
     access_count: int = 0
 
@@ -87,8 +88,6 @@ class MyAccessCredential(BaseModel):
     """Креденшал у списку доступів користувача."""
     credential_id: int
     login: Optional[str] = None
-    protected_password: Optional[str] = None
-    totp_secret: Optional[str] = None
     comment: Optional[str] = None
 
     class Config:
@@ -123,6 +122,7 @@ class SSOLinkAccessData(BaseModel):
     """Відповідь для стратегії sso_link."""
     strategy: Literal["sso_link"]
     redirect_url: str
+    sso_token: str
 
 
 class AccessDataResponse(BaseModel):
@@ -133,3 +133,4 @@ class AccessDataResponse(BaseModel):
     totp_code: Optional[str] = None
     url: Optional[str] = None
     redirect_url: Optional[str] = None
+    sso_token: Optional[str] = None

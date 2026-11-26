@@ -2,14 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import base64
-import pyotp
 
 from src.auth.dependencies import get_current_user, get_current_admin
 from src.database import get_db
-from src.models import Service, Credential, User, UserCredentialAccess, AuthStrategyType
+from src.models import Service, Credential, User, UserCredentialAccess, AuthStrategyType, AuditLog
 from src.credentials.schemas import ServiceCreate, ServiceUpdate, ServiceResponse, ServiceDetailResponse, CredentialWithAccess, CredentialCreate, CredentialUpdate, CredentialResponse, MyAccessService, MyAccessCredential, AccessDataResponse
 from src.strategies import StrategyContext
-from src.security import decrypt_password
+from src.security import decrypt_password, encrypt_password
 from src.users.schemas import UserResponse, GrantAccessRequest
 
 router = APIRouter(prefix="/services", tags=["Services"])
@@ -24,7 +23,7 @@ def validate_totp_secret(secret: str) -> bool:
     """Перевіряє чи є секрет валідним Base32."""
     try:
         clean = normalize_totp_secret(secret)
-        base64.b32decode(clean)
+        base64.b32decode(clean + "=" * (-len(clean) % 8))
         return True
     except Exception:
         return False
@@ -75,8 +74,6 @@ async def get_my_access(
                 MyAccessCredential(
                     credential_id=c.credential_id,
                     login=c.login,
-                    protected_password=c.protected_password,
-                    totp_secret=c.totp_secret,
                     comment=c.comment,
                 )
                 for c in creds
@@ -105,6 +102,7 @@ async def list_services(
             service_url=service.service_url,
             service_logo_url=service.service_logo_url,
             credential_count=count,
+            auth_type=service.auth_type,
         ))
     return response
 
@@ -115,6 +113,8 @@ async def create_service(
     db: AsyncSession = Depends(get_db),
     current_admin: User = Depends(get_current_admin),
 ):
+    if service_data.auth_type == AuthStrategyType.SSO_LINK and not service_data.service_url:
+        raise HTTPException(status_code=400, detail="Для SSO потрібно вказати callback URL")
     service = Service(
         service_name=service_data.service_name,
         service_url=service_data.service_url,
@@ -131,6 +131,7 @@ async def create_service(
         service_url=service.service_url,
         service_logo_url=service.service_logo_url,
         credential_count=0,
+        auth_type=service.auth_type,
     )
 
 
@@ -145,6 +146,11 @@ async def update_service(
     service = result.scalars().one_or_none()
     if not service:
         raise HTTPException(status_code=404, detail="Джерело не знайдено")
+
+    if service_data.auth_type == AuthStrategyType.SSO_LINK:
+        target_url = service_data.service_url if service_data.service_url is not None else service.service_url
+        if not target_url:
+            raise HTTPException(status_code=400, detail="Для SSO потрібно вказати callback URL")
 
     if service_data.service_name is not None:
         service.service_name = service_data.service_name
@@ -177,7 +183,7 @@ async def update_service(
 async def get_service_detail(
     service_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_admin: User = Depends(get_current_admin),
 ):
     result = await db.execute(select(Service).where(Service.service_id == service_id))
     service = result.scalars().one_or_none()
@@ -205,7 +211,8 @@ async def get_service_detail(
         cred_list.append(CredentialWithAccess(
             credential_id=cred.credential_id,
             login=cred.login,
-            protected_password=cred.protected_password,
+            password=decrypt_password(cred.protected_password) if cred.protected_password else None,
+            totp_secret=decrypt_password(cred.totp_secret) if cred.totp_secret else None,
             comment=cred.comment,
             access_count=access_count,
         ))
@@ -242,7 +249,7 @@ async def get_credential_access(
     service_id: int,
     credential_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_admin: User = Depends(get_current_admin),
 ):
     """Отримати список користувачів, які мають доступ до конкретного пароля."""
     # Перевіряємо, що креденшал належить цьому сервісу
@@ -310,12 +317,15 @@ async def grant_credential_access(
         if access.is_active:
             raise HTTPException(status_code=400, detail="Доступ вже надано")
         access.is_active = True
+        access.revoked_at = None
+        access.granted_by = current_admin.user_id
     else:
         # Якщо запису немає, створюємо новий
         access = UserCredentialAccess(
             user_id=request.user_id,
             credential_id=credential_id,
             is_active=True,
+            granted_by=current_admin.user_id,
         )
         db.add(access)
 
@@ -354,7 +364,8 @@ async def revoke_credential_access(
     if not access:
         raise HTTPException(status_code=404, detail="Доступ не знайдено")
 
-    await db.delete(access)
+    access.is_active = False
+    access.revoked_at = func.now()
     await db.commit()
 
 
@@ -422,7 +433,7 @@ async def update_credential(
 
     # Оновлюємо пароль (якщо надано)
     if cred_data.password is not None:
-        credential.protected_password = cred_data.password
+        credential.protected_password = encrypt_password(cred_data.password) if cred_data.password else None
 
     # Оновлюємо коментар
     if cred_data.comment is not None:
@@ -437,32 +448,37 @@ async def update_credential(
                     status_code=400,
                     detail="Невалідний TOTP секрет. Секрет має бути Base32 рядком (наприклад, JBSWY3DPEHPK3PXP)"
                 )
-            credential.totp_secret = normalize_totp_secret(cred_data.totp_secret)
+            credential.totp_secret = encrypt_password(normalize_totp_secret(cred_data.totp_secret))
         else:
             credential.totp_secret = None
-    elif service and service.auth_type == AuthStrategyType.PASSWORD_2FA and not credential.totp_secret:
-        # Якщо це password_2fa сервіс і немає секрету, генеруємо автоматично
-        credential.totp_secret = pyotp.random_base32()
 
     # Оновлюємо доступи користувачів (якщо надано)
     if cred_data.user_ids is not None:
-        # Видаляємо старі доступи
         access_result = await db.execute(
             select(UserCredentialAccess).where(
                 UserCredentialAccess.credential_id == credential_id
             )
         )
-        for access in access_result.scalars().all():
-            await db.delete(access)
-        # Додаємо нові доступи
+        existing_accesses = {access.user_id: access for access in access_result.scalars().all()}
+        requested_user_ids = set(cred_data.user_ids)
+        for user_id, access in existing_accesses.items():
+            if user_id not in requested_user_ids and access.is_active:
+                access.is_active = False
+                access.revoked_at = func.now()
         for user_id in cred_data.user_ids:
             user_result = await db.execute(select(User).where(User.user_id == user_id))
             user = user_result.scalars().one_or_none()
-            if user:
+            if user and user_id in existing_accesses:
+                access = existing_accesses[user_id]
+                access.is_active = True
+                access.revoked_at = None
+                access.granted_by = current_admin.user_id
+            elif user:
                 access = UserCredentialAccess(
                     user_id=user_id,
                     credential_id=credential.credential_id,
                     is_active=True,
+                    granted_by=current_admin.user_id,
                 )
                 db.add(access)
 
@@ -472,7 +488,7 @@ async def update_credential(
     return CredentialResponse(
         credential_id=credential.credential_id,
         login=credential.login,
-        totp_secret=credential.totp_secret,
+        totp_secret=decrypt_password(credential.totp_secret) if credential.totp_secret else None,
         comment=credential.comment,
     )
 
@@ -491,7 +507,6 @@ async def create_credential(
     if not service:
         raise HTTPException(status_code=404, detail="Джерело не знайдено")
 
-    # Автоматично генеруємо TOTP-секрет для password_2fa, якщо не вказано
     totp_secret = cred_data.totp_secret
     if totp_secret:
         # Валідація вручну введеного секрету
@@ -500,15 +515,13 @@ async def create_credential(
                 status_code=400,
                 detail="Невалідний TOTP секрет. Секрет має бути Base32 рядком (наприклад, JBSWY3DPEHPK3PXP)"
             )
-        totp_secret = normalize_totp_secret(totp_secret)
-    elif service.auth_type == AuthStrategyType.PASSWORD_2FA:
-        totp_secret = pyotp.random_base32()
+        totp_secret = encrypt_password(normalize_totp_secret(totp_secret))
 
     # Створюємо креденшал
     credential = Credential(
         service_id=service_id,
         login=cred_data.login if cred_data.login else None,
-        protected_password=cred_data.password,  # TODO: шифрувати пароль
+        protected_password=encrypt_password(cred_data.password) if cred_data.password else None,
         totp_secret=totp_secret,
         comment=cred_data.comment if cred_data.comment else None,
     )
@@ -524,6 +537,7 @@ async def create_credential(
                 user_id=user_id,
                 credential_id=credential.credential_id,
                 is_active=True,
+                granted_by=current_admin.user_id,
             )
             db.add(access)
 
@@ -533,7 +547,7 @@ async def create_credential(
     return CredentialResponse(
         credential_id=credential.credential_id,
         login=credential.login,
-        totp_secret=credential.totp_secret,
+        totp_secret=decrypt_password(credential.totp_secret) if credential.totp_secret else None,
         comment=credential.comment,
     )
 
@@ -567,13 +581,20 @@ async def get_credential_access_data(
     if not service:
         raise HTTPException(status_code=404, detail="Сервіс не знайдено")
 
-    # 3. Розшифровуємо пароль (якщо він є і потрібен)
+    # 3. Розшифровуємо секрети лише під час запиту працівника з активним доступом.
     decrypted_pwd = ""
     if credential.protected_password and service.auth_type == AuthStrategyType.PASSWORD_2FA:
         try:
             decrypted_pwd = decrypt_password(credential.protected_password)
         except Exception:
-            decrypted_pwd = ""
+            raise HTTPException(status_code=500, detail="Не вдалося розшифрувати дані доступу") from None
+
+    decrypted_totp_secret = None
+    if credential.totp_secret and service.auth_type == AuthStrategyType.PASSWORD_2FA:
+        try:
+            decrypted_totp_secret = decrypt_password(credential.totp_secret)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Не вдалося розшифрувати дані доступу") from None
 
     # 4. Отримуємо потрібну стратегію та формуємо відповідь
     strategy = StrategyContext.get_strategy(service.auth_type)
@@ -581,7 +602,16 @@ async def get_credential_access_data(
         user=current_user,
         service=service,
         credential=credential,
-        decrypted_password=decrypted_pwd
+        decrypted_password=decrypted_pwd,
+        decrypted_totp_secret=decrypted_totp_secret,
     )
+
+    db.add(AuditLog(
+        actor_user_id=current_user.user_id,
+        action="credential.accessed",
+        resource_type="credential",
+        resource_id=credential.credential_id,
+    ))
+    await db.commit()
 
     return access_data

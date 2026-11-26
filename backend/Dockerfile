@@ -20,11 +20,17 @@ COPY requirements.txt .
 # Run command into container (Install dependencies)
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN useradd --create-home --uid 10001 appuser
+
 # Copy project into WORKDIR
-COPY src/ src/
+COPY --chown=appuser:appuser src/ src/
+COPY --chown=appuser:appuser migrations/ migrations/
+COPY alembic.ini .
 
 # Open port for FastAPI
 EXPOSE 8000
 
+USER appuser
+
 # Run commands
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn src.main:app --host 0.0.0.0 --port 8000"]
