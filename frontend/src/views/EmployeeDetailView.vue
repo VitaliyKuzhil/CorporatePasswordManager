@@ -171,8 +171,8 @@
 
           <div class="col-password">
             <div class="password-field">
-              <span v-if="cred.showPassword" class="password-value">{{ cred.protected_password }}</span>
-              <span v-else class="password-dots">{{ '•'.repeat(Math.min(cred.protected_password.length, 12)) }}</span>
+              <span v-if="cred.showPassword" class="password-value">{{ cred.password }}</span>
+              <span v-else class="password-dots">{{ '•'.repeat(Math.min(cred.password.length, 12)) }}</span>
               <button class="btn-icon-small" :title="cred.showPassword ? 'Сховати' : 'Показати'" @click="togglePasswordVisibility(cred)">
                 <svg v-if="cred.showPassword" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M1 12C1 12 5 4 12 4C19 4 23 12 23 12C23 12 19 20 12 20C5 20 1 12 1 12Z" stroke="currentColor" stroke-width="2"/>
@@ -182,7 +182,7 @@
                   <path d="M17.94 17.94A10.07 10.07 0 013 12C3 12 7 4 12 4C14.53 4 16.95 5.02 18.94 6.58M1 1L23 23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
               </button>
-              <button class="btn-icon-small" title="Копіювати" @click="copyToClipboard(cred.protected_password)">
+              <button class="btn-icon-small" title="Копіювати" @click="copyToClipboard(cred.password)">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M9 5H6C5.46957 5 4.96086 5.21071 4.58579 5.58579C4.21071 5.96086 4 6.46957 4 7V16C4 16.5304 4.21071 17.0391 4.58579 17.4142C4.96086 17.7893 5.46957 18 6 18H9C9.53043 18 10.0391 17.7893 10.4142 17.4142C10.7893 17.0391 11 16.5304 11 16V7C11 6.46957 10.7893 5.96086 10.4142 5.58579C10.0391 5.21071 9.53043 5 9 5Z" stroke="currentColor" stroke-width="2"/>
                   <path d="M14 5H20C20.5304 5 21.0391 5.21071 21.4142 5.58579C21.7893 5.96086 22 6.46957 22 7V16C22 16.5304 21.7893 17.0391 21.4142 17.4142C21.0391 17.7893 20.5304 18 20 18H14" stroke="currentColor" stroke-width="2"/>
@@ -385,9 +385,9 @@
               <input v-model="editForm.login" type="text" class="form-input" />
             </div>
             <div class="form-group">
-              <label>Пароль</label>
+              <label>Новий пароль</label>
               <div class="password-input-wrapper">
-                <input :type="showEditPassword ? 'text' : 'password'" v-model="editForm.password" class="form-input" placeholder="Введіть новий пароль" />
+                <input :type="showEditPassword ? 'text' : 'password'" v-model="editForm.password" class="form-input" placeholder="Не змінювати, якщо залишити порожнім" />
                 <button type="button" class="btn-password-toggle" @click="showEditPassword = !showEditPassword" :title="showEditPassword ? 'Сховати' : 'Показати'">
                   <svg v-if="!showEditPassword" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -398,6 +398,11 @@
                     <path d="M1 1l22 22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 </button>
+              </div>
+              <button type="button" class="btn btn-secondary" @click="loadCurrentLoginPassword">Показати чинний пароль входу</button>
+              <div v-if="currentLoginPassword" class="current-login-password">
+                <span>{{ currentLoginPassword }}</span>
+                <button type="button" class="btn btn-secondary" @click="copyToClipboard(currentLoginPassword)">Копіювати</button>
               </div>
             </div>
           </div>
@@ -638,12 +643,7 @@ async function searchUsersForGrantAccess() {
 
 async function handleGrantAccessToUser(targetUserId: number) {
   if (!selectedCredentialForGrant.value) return
-  const result = await store.grantCredential(targetUserId, {
-    service_id: selectedCredentialForGrant.value.service_id,
-    login: selectedCredentialForGrant.value.login,
-    password: selectedCredentialForGrant.value.protected_password,
-    comment: selectedCredentialForGrant.value.comment || undefined
-  })
+  const result = await store.grantCredential(targetUserId, selectedCredentialForGrant.value.credential_id)
   if (result) {
     closeGrantAccessDialog()
     await store.fetchCredentials(userId.value)
@@ -734,6 +734,7 @@ async function revokeCredential(credential_id: number) {
 // Edit dialog
 const showEditDialog = ref(false)
 const showEditPassword = ref(false)
+const currentLoginPassword = ref<string | null>(null)
 const editForm = ref({
   full_name: '',
   phone: '',
@@ -756,6 +757,12 @@ function openEditDialog() {
 function closeEditDialog() {
   showEditDialog.value = false
   showEditPassword.value = false
+  currentLoginPassword.value = null
+}
+
+async function loadCurrentLoginPassword() {
+  const result = await store.fetchLoginPassword(userId.value)
+  currentLoginPassword.value = result?.password || null
 }
 
 async function handleEditEmployee() {

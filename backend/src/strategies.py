@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import jwt
 import pyotp
@@ -23,7 +24,7 @@ class AccessStrategy(ABC):
     """Базовий інтерфейс стратегії доступу до сервісу."""
 
     @abstractmethod
-    def prepare_access_payload(self, user, service, credential, decrypted_password: str) -> dict:
+    def prepare_access_payload(self, user, service, credential, decrypted_password: str, decrypted_totp_secret: str | None) -> dict:
         """Формує дані для фронтенду залежно від типу сервісу."""
         pass
 
@@ -31,10 +32,10 @@ class AccessStrategy(ABC):
 class Password2FAStrategy(AccessStrategy):
     """Стратегія для зовнішніх сайтів: Пароль + живий 2FA код (TOTP)."""
 
-    def prepare_access_payload(self, user, service, credential, decrypted_password: str) -> dict:
+    def prepare_access_payload(self, user, service, credential, decrypted_password: str, decrypted_totp_secret: str | None) -> dict:
         totp_code = None
-        if credential.totp_secret:
-            padded_secret = pad_totp_secret(credential.totp_secret)
+        if decrypted_totp_secret:
+            padded_secret = pad_totp_secret(decrypted_totp_secret)
             totp = pyotp.TOTP(padded_secret, interval=30)
             totp_code = totp.now()  # Генерує актуальний 6-значний код (кожні 30 сек)
 
@@ -50,22 +51,23 @@ class Password2FAStrategy(AccessStrategy):
 class SSOLinkStrategy(AccessStrategy):
     """Стратегія для корпоративних сервісів: Вхід за одноразовою JWT-перепусткою."""
 
-    def prepare_access_payload(self, user, service, credential, decrypted_password: str) -> dict:
+    def prepare_access_payload(self, user, service, credential, decrypted_password: str, decrypted_totp_secret: str | None) -> dict:
+        if not service.service_url:
+            raise ValueError("SSO callback URL is not configured")
         payload = {
             "sub": user.login,
             "service_id": service.service_id,
-            "exp": datetime.now(timezone.utc) + timedelta(seconds=60),  # Діє 60 секунд
+            "aud": service.service_url,
+            "jti": str(uuid4()),
+            "exp": datetime.now(timezone.utc) + timedelta(seconds=30),
             "iss": "corporate-password-manager",
         }
         sso_token = jwt.encode(payload, settings.sso_secret_key, algorithm="HS256")
 
-        # Формуємо готове посилання для переходу
-        separator = "&" if "?" in (service.service_url or "") else "?"
-        redirect_url = f"{service.service_url}{separator}sso_token={sso_token}"
-
         return {
             "strategy": "sso_link",
-            "redirect_url": redirect_url,
+            "redirect_url": service.service_url,
+            "sso_token": sso_token,
         }
 
 

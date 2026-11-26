@@ -142,7 +142,7 @@
                 </td>
                 <td class="cred-password">
                   <div class="password-cell">
-                    <span v-if="visiblePasswords.has(cred.credential_id)" class="password-value">{{ cred.protected_password }}</span>
+                    <span v-if="visiblePasswords.has(cred.credential_id)" class="password-value">{{ cred.password }}</span>
                     <span v-else class="password-dots">••••••••••</span>
                     <button class="btn-icon-sm" @click="togglePassword(cred.credential_id)" :title="visiblePasswords.has(cred.credential_id) ? 'Сховати' : 'Показати'">
                       <svg v-if="visiblePasswords.has(cred.credential_id)" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -911,7 +911,7 @@ function openEditCredentialDialog(cred: any) {
     editingCredentialId.value = cred.credential_id
     editCredentialForm.value = {
         login: cred.login || '',
-        password: cred.protected_password || '',
+        password: cred.password || '',
         totp_secret: cred.totp_secret || '',
         comment: cred.comment || ''
     }
@@ -997,16 +997,14 @@ function togglePassword(credentialId: number) {
 }
 
 function copyPassword(credentialId: number) {
-  // TODO: реалізувати копіювання пароля
-  console.log('Копіювати пароль:', credentialId)
+  const password = detailStore.detail?.credentials.find(
+    (credential: any) => credential.credential_id === credentialId
+  )?.password
+  if (password) navigator.clipboard.writeText(password).catch(() => undefined)
 }
 
 function copyLogin(login: string) {
-  navigator.clipboard.writeText(login).then(() => {
-    console.log('Логін скопійовано:', login)
-  }).catch(() => {
-    console.log('Копіювати логін:', login)
-  })
+  navigator.clipboard.writeText(login).catch(() => undefined)
 }
 
 function openGeneratePassword() {
@@ -1062,8 +1060,14 @@ function closeAddDialog() {
 function generateAddPassword() {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
   let password = ''
-  for (let i = 0; i < 24; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length))
+  const maxValidByte = 256 - (256 % chars.length)
+  while (password.length < 24) {
+    const randomBytes = crypto.getRandomValues(new Uint8Array(32))
+    for (const byte of randomBytes) {
+      if (byte < maxValidByte && password.length < 24) {
+        password += chars.charAt(byte % chars.length)
+      }
+    }
   }
   addForm.value.password = password
 }

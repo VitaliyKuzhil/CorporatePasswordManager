@@ -137,7 +137,7 @@
                 <div class="credential-field">
                   <label class="field-label">Пароль</label>
                   <div class="field-value-wrapper">
-                    <span v-if="passwordVisibility.has(cred.credential_id)" class="field-value password-value">{{ cred.protected_password || '—' }}</span>
+                    <span v-if="passwordVisibility.has(cred.credential_id)" class="field-value password-value">{{ accessData[cred.credential_id]?.password || '—' }}</span>
                     <span v-else class="field-value password-dots">••••••••••</span>
                     <button class="btn-icon btn-eye" @click="togglePassword(cred.credential_id)" :title="passwordVisibility.has(cred.credential_id) ? 'Сховати' : 'Показати'">
                       <svg v-if="!passwordVisibility.has(cred.credential_id)" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -149,7 +149,7 @@
                         <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
                     </button>
-                    <button class="btn-icon btn-copy" @click="copyToClipboard(cred.protected_password || '')" title="Копіювати">
+                    <button class="btn-icon btn-copy" @click="copyToClipboard(accessData[cred.credential_id]?.password || '')" title="Копіювати">
                       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M8 4V16C8 17.1046 8.89543 18 10 18H18C19.1046 18 20 17.1046 20 16V4C20 2.89543 19.1046 2 18 2H10C8.89543 2 8 2.89543 8 4ZM16 18V20C16 21.1046 15.1046 22 14 22H4C2.89543 22 2 21.1046 2 20V8C2 6.89543 2.89543 6 4 6H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                       </svg>
@@ -158,7 +158,7 @@
                 </div>
 
                 <!-- 2FA Code Field -->
-                <div class="credential-field totp-field" v-if="cred.totp_secret">
+                <div class="credential-field totp-field" v-if="accessData[cred.credential_id]?.totp_code">
                   <label class="field-label">
                     2FA
                     <span v-if="totpTimers.has(cred.credential_id)" class="totp-timer">{{ totpTimers.get(cred.credential_id) }} с</span>
@@ -261,7 +261,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useMyAccessStore } from '@/stores/myAccess'
 import { useAuthStore } from '@/stores/auth'
 
@@ -274,81 +274,29 @@ const avatarErrors = ref(new Set<number>())
 const toastMessage = ref('')
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
-// TOTP state
-const totpCodes = ref<Record<number, string>>({})
+// Access data is fetched only after the user requests it.
+const accessData = ref<Record<number, { password?: string; totp_code?: string; url?: string; redirect_url?: string; sso_token?: string }>>({})
 const totpTimers = ref<Map<number, number>>(new Map())
 let totpInterval: ReturnType<typeof setInterval> | null = null
 
 // Session timer
-const sessionRemaining = ref('12 год 0 хв')
+const sessionRemaining = ref('')
+let sessionInterval: ReturnType<typeof setInterval> | null = null
 
-// TOTP via Web Crypto API
-async function generateTOTP(secret: string): Promise<string> {
+function updateSessionRemaining() {
   try {
-    // Decode base32 secret to bytes
-    let cleanSecret = secret.replace(/\s+/g, '').toUpperCase()
-    // Pad short secrets (e.g., from Notion: 16 chars = 80 bits) to 24 chars (120 bits) for Web Crypto
-    if (cleanSecret.length < 24) {
-      cleanSecret = cleanSecret.padEnd(24, 'A')
-    }
-    const key = urlBase32ToUint8Array(cleanSecret)
-
-    // Get current time step (30 second period)
-    const now = Math.floor(Date.now() / 1000)
-    const timeStep = Math.floor(now / 30)
-    const timeHex = BigInt(timeStep).toString(16).padStart(16, '0')
-    const timeBytes = new Uint8Array(8)
-    for (let i = 0; i < 8; i++) {
-      timeBytes[i] = parseInt(timeHex.substr(i * 2, 2), 16)
-    }
-
-    // Import key and sign
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      key.buffer as ArrayBuffer,
-      { name: 'HMAC', hash: 'SHA-1' },
-      false,
-      ['sign']
-    )
-    const sig = await crypto.subtle.sign('HMAC', cryptoKey, timeBytes)
-    const hmac = new Uint8Array(sig)
-
-    // Dynamic truncation
-    const offset = hmac[hmac.length - 1]! & 0x0f
-    const b0 = hmac[offset] ?? 0
-    const b1 = hmac[offset + 1] ?? 0
-    const b2 = hmac[offset + 2] ?? 0
-    const b3 = hmac[offset + 3] ?? 0
-    const code = ((b0 & 0x7f) << 24 | (b1 & 0xff) << 16 | (b2 & 0xff) << 8 | (b3 & 0xff)) % 1000000
-
-    return String(code).padStart(6, '0')
-  } catch (e) {
-    console.error('TOTP generation failed:', e)
-    return '000000'
+    const payloadSegment = authStore.token?.split('.')[1]
+    if (!payloadSegment) throw new Error('Missing token payload')
+    const payload = JSON.parse(atob(payloadSegment.replace(/-/g, '+').replace(/_/g, '/')))
+    const remaining = Math.max(0, Math.floor((payload.exp * 1000 - Date.now()) / 1000))
+    const hours = Math.floor(remaining / 3600)
+    const minutes = Math.floor((remaining % 3600) / 60)
+    sessionRemaining.value = hours ? `${hours} год ${minutes} хв` : `${minutes} хв`
+  } catch {
+    sessionRemaining.value = '—'
   }
 }
 
-function urlBase32ToUint8Array(base32: string): Uint8Array {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
-  const buffer: number[] = []
-  let bits = 0
-  let value = 0
-
-  for (let i = 0; i < base32.length; i++) {
-    const char = base32[i]
-    if (!char) continue
-    const idx = alphabet.indexOf(char)
-    if (idx === -1) continue
-    value = (value << 5) | idx
-    bits += 5
-    if (bits >= 8) {
-      bits -= 8
-      buffer.push((value >> bits) & 0xff)
-    }
-  }
-
-  return new Uint8Array(buffer)
-}
 
 // Filtered services
 const filteredServices = computed(() => {
@@ -420,33 +368,40 @@ function togglePassword(credentialId: number) {
 
 // TOTP functions
 function getTOTPCode(credentialId: number): string {
-  const code = totpCodes.value[credentialId]
+  const code = accessData.value[credentialId]?.totp_code
   if (!code) return '—— ———'
   // Format as "482 910"
   return code.replace(/(\d{3})(\d{3})/, '$1 $2')
 }
 
-async function updateTOTPCodes() {
-  const updatedCodes: Record<number, string> = {}
-  const updatedTimers = new Map<number, number>()
-  const now = Math.floor(Date.now() / 1000)
-  const timeRemaining = 30 - (now % 30)
+async function fetchAccessData(credentialId: number) {
+  const token = authStore.token
+  if (!token) throw new Error('Відсутній токен авторизації')
+  const response = await fetch(`/api/services/credentials/${credentialId}/access-data`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  })
+  if (!response.ok) throw new Error('Не вдалося отримати дані доступу')
+  const data = await response.json()
+  accessData.value = { ...accessData.value, [credentialId]: data }
+  if (data.totp_code) {
+    totpTimers.value.set(credentialId, 30 - (Math.floor(Date.now() / 1000) % 30))
+  }
+  return data
+}
 
-  for (const service of externalServices.value) {
-    for (const cred of service.credentials) {
-      if (cred.totp_secret) {
-        try {
-          updatedCodes[cred.credential_id] = await generateTOTP(cred.totp_secret)
-        } catch {
-          updatedCodes[cred.credential_id] = '000000'
-        }
-        updatedTimers.set(cred.credential_id, timeRemaining)
-      }
+function updateTOTPTimers() {
+  for (const [credentialId, seconds] of totpTimers.value) {
+    if (seconds <= 1) {
+      totpTimers.value.delete(credentialId)
+      void fetchAccessData(credentialId).catch(() => {
+        const updated = { ...accessData.value }
+        delete updated[credentialId]
+        accessData.value = updated
+      })
+    } else {
+      totpTimers.value.set(credentialId, seconds - 1)
     }
   }
-
-  totpCodes.value = updatedCodes
-  totpTimers.value = updatedTimers
 }
 
 function copyToClipboard(text: string) {
@@ -457,7 +412,7 @@ function copyToClipboard(text: string) {
 }
 
 function copyTOTPCode(credentialId: number) {
-  const code = totpCodes.value[credentialId]
+  const code = accessData.value[credentialId]?.totp_code
   if (code) {
     navigator.clipboard.writeText(code).then(() => {
       showToast('2FA-код скопійовано')
@@ -474,78 +429,55 @@ function showToast(message: string) {
 }
 
 async function handleLogin(service: any, cred: any) {
-  // If there's a TOTP secret, generate the code on login
-  if (cred.totp_secret) {
-    try {
-      const code = await generateTOTP(cred.totp_secret)
-      totpCodes.value[cred.credential_id] = code
-      const now = Math.floor(Date.now() / 1000)
-      totpTimers.value.set(cred.credential_id, 30 - (now % 30))
-    } catch (e) {
-      console.error('TOTP generation failed:', e)
-    }
+  const popup = window.open('about:blank', '_blank')
+  if (!popup) {
+    showToast('Дозвольте спливаючі вікна для входу')
+    return
   }
-
-  // Open the service URL in a new tab
-  if (service.service_url) {
-    window.open(service.service_url, '_blank', 'noopener,noreferrer')
+  try {
+    const data = await fetchAccessData(cred.credential_id)
+    const targetUrl = data.url || service.service_url
+    if (data.strategy === 'sso_link' && data.sso_token && data.redirect_url) {
+      const form = popup.document.createElement('form')
+      form.method = 'POST'
+      form.action = data.redirect_url
+      const tokenInput = popup.document.createElement('input')
+      tokenInput.type = 'hidden'
+      tokenInput.name = 'sso_token'
+      tokenInput.value = data.sso_token
+      form.appendChild(tokenInput)
+      popup.document.body.appendChild(form)
+      form.submit()
+    } else if (targetUrl) {
+      popup.location.href = targetUrl
+    } else {
+      popup.close()
+    }
+  } catch {
+    popup.close()
+    showToast('Не вдалося отримати дані доступу')
   }
 }
 
 async function handleSsoLogin(service: any) {
-  try {
-    const token = authStore.token
-    if (!token) return
-
-    // Get the first credential ID for this service
-    const credId = service.credentials[0]?.credential_id
-    if (!credId) {
-      // Fallback: open service URL directly
-      if (service.service_url) {
-        window.open(service.service_url, '_blank', 'noopener,noreferrer')
-      }
-      return
-    }
-
-    const response = await fetch(`/api/services/credentials/${credId}/access-data`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-
-    if (response.ok) {
-      const data = await response.json()
-      if (data.strategy === 'sso_link' && data.redirect_url) {
-        window.open(data.redirect_url, '_blank', 'noopener,noreferrer')
-      } else if (data.url) {
-        window.open(data.url, '_blank', 'noopener,noreferrer')
-      }
-    }
-  } catch (e) {
-    console.error('SSO login failed:', e)
-    // Fallback: open service URL
-    if (service.service_url) {
-      window.open(service.service_url, '_blank', 'noopener,noreferrer')
-    }
-  }
+  const credential = service.credentials[0]
+  if (!credential) return
+  await handleLogin(service, credential)
 }
 
 onMounted(() => {
   store.fetchMyAccess()
-  // Update TOTP codes every second
-  totpInterval = setInterval(updateTOTPCodes, 1000)
-  updateTOTPCodes()
+  updateSessionRemaining()
+  sessionInterval = setInterval(updateSessionRemaining, 60_000)
+  totpInterval = setInterval(updateTOTPTimers, 1000)
 })
 
 onUnmounted(() => {
   if (totpInterval) clearInterval(totpInterval)
+  if (sessionInterval) clearInterval(sessionInterval)
   if (toastTimer) clearTimeout(toastTimer)
 })
 
-// Reset TOTP codes when filters change
-watch([filteredServices], () => {
-  updateTOTPCodes()
-})
 </script>
 
 <style scoped>

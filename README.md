@@ -31,20 +31,20 @@
 
 ### 1. `password_2fa` — Зовнішні сервіси (Gmail, Notion, GitHub, Slack тощо)
 
-1. Адміністратор додає облікові дані та опціонально вказує Base32-секрет TOTP (якщо поле порожнє, система автоматично генерує секрет через `pyotp`).
+1. Адміністратор додає облікові дані та, якщо сервіс використовує 2FA, вручну вказує його реальний Base32-секрет TOTP.
 2. Паролі зберігаються у базі даних у зашифрованому вигляді (Fernet / AES-128-CBC).
-3. Під час запиту доступу працівником система розшифровує пароль і формує 6-значний TOTP-код за стандартом RFC 6238 (інтервал **30 секунд**).
+3. Лише після явного запиту працівника `/access-data` перевіряє активний доступ, розшифровує пароль і формує 6-значний TOTP-код за RFC 6238 (інтервал **30 секунд**); запит фіксується в аудит-лозі.
 4. **Особливості TOTP:**
-   * Генерація 2FA-коду на фронтенді працює через **Web Crypto API** (без зайвих запитів до сервера кожні 30 секунд).
+   * TOTP-код генерується на бекенді; секрет не передається працівнику, а новий код запитується після завершення 30-секундного інтервалу.
    * Автоматична нормалізація секретів (видалення пробілів, верхній регістр) та підтримка коротких 16-символьних ключів від Google/Notion через padding.
    * Валідація формату Base32 перед збереженням у БД.
 
 ### 2. `sso_link` — Корпоративні сервіси (внутрішні CRM, ERP тощо)
 
 1. Адміністратор реєструє сервіс із типом `sso_link` та вказує його callback URL (наприклад, `http://localhost:8001/auth/callback`).
-2. Коли працівник натискає **«Увійти»**, бекенд генерує короткоживучий одноразовий **JWT-токен** (алгоритм `HS256`, час дії — **60 секунд**), який містить `sub` (логін), `service_id` та `iss` (`corporate-password-manager`).
-3. Користувач автоматично перенаправляється за посиланням `{service_url}?sso_token={jwt_token}`.
-4. Цільовий корпоративний сервіс перевіряє підпис JWT за допомогою спільного ключа `SSO_SECRET_KEY` та створює сесію користувача через cookie.
+2. Коли працівник натискає **«Увійти»**, бекенд генерує JWT із `jti`, `aud`, `iss`, `sub` та строком дії **30 секунд**.
+3. Браузер відправляє токен POST-формою до callback URL; токен не додається до URL/query string.
+4. Цільовий сервіс вимагає `exp` і `aud`, перевіряє підпис спільним `SSO_SECRET_KEY`, відхиляє повторно використаний `jti` та створює підписану HttpOnly-сесійну cookie.
 
 ---
 
@@ -55,8 +55,7 @@ CorporatePasswordManager/
 ├── backend/                    # Бекенд (FastAPI, Python 3.11)
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── migrations/
-│   │   └── 001_add_auth_strategy.sql  # SQL-міграція для auth_type та totp_secret
+│   ├── migrations/alembic/            # Версійовані міграції схеми й шифрування даних
 │   └── src/
 │       ├── main.py             # Точка входу FastAPI, lifespan, CORS
 │       ├── config.py           # Налаштування з .env (Pydantic Settings)
@@ -119,11 +118,12 @@ CorporatePasswordManager/
 | `user_id` | INT (PK) | Унікальний ідентифікатор |
 | `full_name` | VARCHAR(100) | Повне ім'я |
 | `login` | VARCHAR(50) UNIQUE | Логін для входу |
-| `protected_password` | VARCHAR(255) | AES-зашифрований пароль (Fernet) |
+| `protected_password` | TEXT | Fernet-зашифрований пароль |
 | `phone` | VARCHAR(20) | Телефон |
 | `avatar_url` | VARCHAR(255) | Посилання на аватар |
 | `role` | VARCHAR(20) | `admin` або `user` |
 | `status` | VARCHAR(20) | `active` або `blocked` |
+| `auth_version` | INT | Версія для відкликання старих JWT |
 | `created_at` | DATETIME | Час створення |
 
 ### Таблиця `services` — Джерела (сервіси)
@@ -143,8 +143,8 @@ CorporatePasswordManager/
 | `credential_id` | INT (PK) | Унікальний ідентифікатор |
 | `service_id` | INT (FK → services) | Посилання на сервіс |
 | `login` | VARCHAR(100) | Логін для сервісу |
-| `protected_password` | VARCHAR(255) | AES-зашифрований пароль |
-| `totp_secret` | VARCHAR(64) | Base32-секрет TOTP (для 2FA) |
+| `protected_password` | TEXT | Fernet-зашифрований пароль |
+| `totp_secret` | TEXT | Fernet-зашифрований Base32-секрет TOTP |
 | `comment` | TEXT | Коментар |
 
 ### Таблиця `user_credential_access` — Доступи користувачів
@@ -155,6 +155,10 @@ CorporatePasswordManager/
 | `credential_id` | INT (FK → credentials) | Креденшал |
 | `is_active` | BOOLEAN | Активний доступ |
 | `granted_at` | DATETIME | Час надання доступу |
+| `granted_by` | INT (FK → users) | Адміністратор, який надав доступ |
+| `revoked_at` | DATETIME | Час останнього відкликання |
+
+Окремі таблиці `audit_log` і `login_attempts` фіксують видачу секретів та обмежують невдалі спроби входу.
 
 ---
 
@@ -166,7 +170,7 @@ CorporatePasswordManager/
 |-------|------|------|--------|
 | POST | `/login` | Вхід у систему (OAuth2 Password Flow) | Усі |
 | GET | `/profile` | Отримати профіль поточного користувача | Авторизовані |
-| PUT | `/profile` | Оновити профіль | Авторизовані |
+| PUT | `/profile` | Оновити контакти; змінювати власний логін/пароль може лише адмін | Авторизовані |
 
 ### Сервіси та креденшали (`/api/services`)
 
@@ -177,8 +181,8 @@ CorporatePasswordManager/
 | POST | `/` | Створити новий сервіс | Адмін |
 | PUT | `/{service_id}` | Оновити сервіс | Адмін |
 | DELETE | `/{service_id}` | Видалити сервіс | Адмін |
-| GET | `/{service_id}/detail` | Деталі сервісу з паролями | Авторизовані |
-| GET | `/{service_id}/credentials/{cred_id}/access` | Список користувачів з доступом | Авторизовані |
+| GET | `/{service_id}/detail` | Деталі сервісу з паролями | Адмін |
+| GET | `/{service_id}/credentials/{cred_id}/access` | Список користувачів з доступом | Адмін |
 | POST | `/{service_id}/credentials/{cred_id}/access` | Надати доступ користувачу | Адмін |
 | DELETE | `/{service_id}/credentials/{cred_id}/access/{user_id}` | Забрати доступ | Адмін |
 | POST | `/{service_id}/credentials` | Створити новий пароль | Адмін |
@@ -196,7 +200,7 @@ CorporatePasswordManager/
 | PATCH | `/{user_id}/status` | Змінити статус (active/blocked) | Адмін |
 | GET | `/{user_id}` | Деталі працівника | Адмін |
 | GET | `/{user_id}/credentials` | Креденшали працівника | Адмін |
-| POST | `/{user_id}/credentials` | Надати доступ до сервісу | Адмін |
+| POST | `/{user_id}/credentials` | Надати доступ до наявного credential | Адмін |
 | DELETE | `/{user_id}/credentials/{cred_id}` | Забрати доступ | Адмін |
 | POST | `/{user_id}/grant-all-credentials` | Надати всі паролі іншого користувача | Адмін |
 | DELETE | `/{user_id}` | Видалити користувача | Адмін |
@@ -221,10 +225,9 @@ CorporatePasswordManager/
 
 * **Пошук** по назвах сервісів та логінах
 * **Фільтр** по джерелах та типу входу (Зовнішні / Корпоративні)
-* **Секція "Зовнішні сервіси"** (password_2fa): картки з логіном, паролем, 2FA-кодом з таймером, кнопками копіювання та "Увійти"
+* **Секція "Зовнішні сервіси"** (password_2fa): пароль і серверний TOTP-код завантажуються лише після натискання "Увійти"
 * **Секція "Корпоративні сервіси"** (sso_link): картки з кнопкою "Увійти" для SSO-перенаправлення
-* **Власна реалізація TOTP** через Web Crypto API (без залежностей) — генерує 6-значний код кожні 30 секунд
-* **Таймер відліку** до наступної зміни коду
+* **Таймер відліку** до наступного запиту серверного TOTP-коду
 
 ### Ключові функції HomeView (Адмін)
 
@@ -246,22 +249,24 @@ CorporatePasswordManager/
 
 ## Безпека
 
-* **Шифрування паролів:** усі паролі користувачів і сервісів шифруються двостороннім алгоритмом **Fernet (AES-128-CBC)** перед записом у MySQL.
-* **JWT-авторизація:** доступ до API захищений Bearer-токенами (`HS256`, термін дії — 12 годин).
-* **Рольовий доступ (RBAC):** чітке розмежування прав між `admin` та `user` на рівні залежностей FastAPI (`get_current_user`, `get_current_admin`) і навігаційних guard'ів Vue Router.
+* **Шифрування секретів:** паролі й TOTP-секрети шифруються Fernet/MultiFernet перед записом у `TEXT`; ключі мають зберігатися окремо від дампів БД.
+* **JWT-авторизація:** Bearer-токени (`HS256`) діють 60 хвилин і анулюються після зміни пароля або статусу користувача.
+* **Рольовий доступ (RBAC):** FastAPI перевіряє ролі на сервері, а Vue Router додатково закриває адмінські сторінки.
+* **Захист входу:** порівняння пароля constant-time, до п’яти невдалих спроб на пару логін/IP за 15 хвилин.
+* **Аудит:** кожна видача секрету через `access-data` записується в окрему таблицю `audit_log`.
 * **Миттєве блокування:** зміна статусу користувача на `blocked` одразу забороняє йому доступ до системи.
 * **Ізоляція SSO:** для підпису SSO-перепусток використовується окремий секретний ключ `SSO_SECRET_KEY`.
 * **CORS:** запити до API дозволені лише з домену, вказаного у `FRONTEND_URL`.
-* **Валідація TOTP:** перевірка Base32-формату перед збереженням секретів у БД.
+* **Валідація TOTP:** перевірка Base32-формату перед шифруванням і збереженням секретів у БД.
 
 ---
 
 ## Стек технологій
 
-* **Frontend:** Vue 3 (Composition API), TypeScript, Vue Router, Pinia, Vite, Web Crypto API (генерація TOTP).
-* **Backend:** FastAPI (Python 3.11), SQLAlchemy 2.0 (Async), Pydantic Settings, `cryptography` (Fernet), `PyJWT`, `pyotp`.
-* **Database:** MySQL 8.4 (асинхронний драйвер `asyncmy`), 4 основні таблиці (`users`, `services`, `credentials`, `user_credential_access`).
-* **Infrastructure:** Docker, Docker Compose (5 контейнерів), phpMyAdmin.
+* **Frontend:** Vue 3 (Composition API), TypeScript, Vue Router, Pinia, Vite, Web Crypto API (генерація паролів).
+* **Backend:** FastAPI (Python 3.11), SQLAlchemy 2.0 (Async), Alembic, Pydantic Settings, `cryptography` (Fernet), `PyJWT`, `pyotp`.
+* **Database:** MySQL 8.4 (`asyncmy`), таблиці користувачів, сервісів, credentials, доступів, аудиту та спроб входу.
+* **Infrastructure:** Docker Compose для dev і production; production frontend збирається у статичний образ Nginx.
 * **Test SSO Client:** окремий FastAPI-сервіс `Company CRM` (`company_crm.py`) для перевірки SSO-авторизації.
 
 ---
@@ -279,6 +284,7 @@ CorporatePasswordManager/
 * `pyotp` — генерація TOTP-кодів (2FA)
 * `python-multipart` — обробка форм
 * `pydantic-settings` — конфігурація з .env
+* `alembic` — версійовані міграції схеми й шифрування наявних значень
 
 ### Frontend (Node.js)
 
@@ -287,7 +293,6 @@ CorporatePasswordManager/
 * `pinia@4.0` — управління станом
 * `vite@8.2` — бандлер/девелопмент-сервер
 * `typescript@6.0` — типізація
-* `otplib@13.6` — TOTP (fallback, основна реалізація через Web Crypto API)
 
 ### Company CRM (Python)
 
@@ -328,9 +333,10 @@ cp .env.example .env
 
 | Змінна | Призначення |
 |--------|-------------|
-| `DATABASE_URL` | Рядок підключення до MySQL (`asyncmy`) |
+| `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD` | Параметри MySQL; `DATABASE_URL` генерується автоматично, якщо не заданий явно |
 | `SECRET_KEY` | Секретний ключ для JWT-токенів авторизації |
-| `ENCRYPTION_KEY` | Fernet-ключ для AES-шифрування паролів |
+| `ENCRYPTION_KEY` | Основний Fernet-ключ для шифрування паролів і TOTP-секретів |
+| `ENCRYPTION_KEYS` | Попередні Fernet-ключі через кому для читання даних після ротації |
 | `SSO_SECRET_KEY` | Спільний секретний ключ для підпису та перевірки SSO-JWT |
 | `FRONTEND_URL` | URL фронтенду для налаштування CORS |
 | `DEFAULT_ADMIN_LOGIN` / `DEFAULT_ADMIN_PASSWORD` | Облікові дані першого адміністратора (створюється автоматично) |
@@ -340,19 +346,15 @@ cp .env.example .env
 | `PHPMYADMIN_PORT` | Порт phpMyAdmin (за замовчуванням 8081) |
 | `COMPANY_CRM_PORT` | Порт Company CRM (за замовчуванням 8001) |
 
+Згенеруйте `SECRET_KEY` і `SSO_SECRET_KEY` командою `openssl rand -hex 32`, а `ENCRYPTION_KEY` — командою з коментаря у `.env.example`. Заповніть також `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD` і `DEFAULT_ADMIN_PASSWORD`; не додавайте `.env` чи ключ шифрування до Git або резервної копії БД.
+
 **3. Зберіть та запустіть контейнери:**
 
 ```bash
 docker compose up -d --build
 ```
 
-Під час першого запуску Docker автоматично підніме базу даних MySQL 8.4, створить таблиці через SQLAlchemy та додасть початкового адміністратора.
-
-*(Якщо ви оновлюєте вже існуючу базу даних, застосуйте міграцію з `backend/migrations/001_add_auth_strategy.sql`):*
-
-```bash
-mysql -u root -p < backend/migrations/001_add_auth_strategy.sql
-```
+Під час запуску backend автоматично застосовує Alembic-міграції, шифрує наявні plaintext-паролі/TOTP-секрети та створює першого адміністратора. Перед оновленням існуючої БД зробіть резервну копію і переконайтеся, що задані всі ключі шифрування, якими зашифровані старі значення.
 
 ---
 
@@ -364,10 +366,18 @@ mysql -u root -p < backend/migrations/001_add_auth_strategy.sql
 |--------|-----------|--------|------|
 | **Frontend** | `pm_frontend` | http://localhost:5173 | Веб-інтерфейс (Vue 3) |
 | **Backend API** | `pm_backend` | http://localhost:8000 | FastAPI REST API |
-| **Swagger UI** | `pm_backend` | http://localhost:8000/docs | Інтерактивна документація API |
+| **Swagger UI** | `pm_backend` | http://localhost:8000/docs | Доступний лише коли `DEBUG=true` |
 | **Company CRM** | `pm_company_crm` | http://localhost:8001 | Тестовий корпоративний SSO-клієнт |
 | **phpMyAdmin** | `pm_phpmyadmin` | http://localhost:8081 | Веб-інтерфейс для керування MySQL |
-| **MySQL 8.4** | `pm_mysql` | `localhost:3307` | Порт бази даних для зовнішніх клієнтів |
+| **MySQL 8.4** | `pm_mysql` | `localhost:3307` | Dev-порт, прив'язаний лише до loopback |
+
+Порти backend, MySQL і phpMyAdmin у dev Compose доступні лише з локальної машини. Production Compose не публікує MySQL/phpMyAdmin і подає frontend через Nginx:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Для production задай `FRONTEND_URL` на реальний origin і `COOKIE_SECURE=true` за HTTPS.
 
 ---
 
@@ -383,20 +393,21 @@ mysql -u root -p < backend/migrations/001_add_auth_strategy.sql
 ### Ендпоінти Company CRM
 
 * `GET /` — головна сторінка з перевіркою сесії (cookie `crm_session_user`)
-* `GET /auth/callback?sso_token=<jwt>` — callback для прийому SSO-JWT токену
+* `POST /auth/callback` — callback приймає `sso_token` у form body
 * `GET /logout` — вихід з CRM (видалення cookie)
 
 ---
 
 ## Міграції бази даних
 
-Для існуючих баз даних застосуйте SQL-міграції з папки `backend/migrations/`:
+Alembic є джерелом істини для схеми. Звичайний запуск контейнера застосовує усі міграції автоматично; вручну їх можна переглянути з каталогу `backend`:
 
 ```bash
-mysql -u root -p < backend/migrations/001_add_auth_strategy.sql
+alembic history
+alembic upgrade head
 ```
 
-Для нових баз міграція не потрібна — SQLAlchemy створює таблиці з новими колонками автоматично.
+Міграція `0002_secure_storage` змінює секретні колонки на `TEXT` і шифрує наявні значення. Не запускайте старі SQL-файли міграцій вручну.
 
 ---
 
@@ -423,9 +434,9 @@ docker compose up -d --build
 
 ## Примітки
 
-* TOTP-коди генеруються на стороні клієнта через Web Crypto API — не потрібні додаткові запити до сервера.
-* Короткі TOTP-секрети (16 символів від Google/Notion) автоматично доповнюються до 24 символів для сумісності з pyotp.
-* SSO_SECRET_KEY має бути ідентичним у `.env` бекенду та у корпоративному сервісі.
-* Пароль користувача зберігається у зашифрованому вигляді (Fernet) — адмін може розшифрувати його через API.
+* TOTP-коди генерує бекенд із зашифрованого секрету; frontend не отримує TOTP-секрет.
+* Короткі TOTP-секрети доповнюються до 24 символів для сумісності з pyotp; секрети зовнішніх сервісів потрібно ввести вручну.
+* `SSO_SECRET_KEY` має бути ідентичним у backend і цільовому сервісі; тестовий CRM зберігає використані `jti` в пам'яті одного процесу й потребує спільного сховища replay-кешу для багатопроцесного production.
+* Видача пароля/коду журналюється, однак відкликання не може стерти секрет, який працівник уже побачив або скопіював.
 * Перший адміністратор створюється автоматично при першому запуску бекенду.
 * Кожного разу після змін у `requirements.txt` потрібно перезбирати образ: `docker compose build backend`.
